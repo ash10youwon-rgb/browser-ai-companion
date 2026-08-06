@@ -376,15 +376,29 @@ async function loadModel() {
   if (!(await detectGPU())) return;
 
   loading = true; $("#loadBtn").disabled = true; $("#loadBtnText").textContent = "Loading…";
-  setProgress(true, "Initializing WebGPU engine…", 0);
+
+  // Tell the user up-front whether this is a cold download or a warm cache hit.
+  let cached = false;
+  try { cached = await webllm.hasModelInCache(resolved); } catch { cached = false; }
+  const started = performance.now();
+  setProgress(true, cached
+    ? "Model found in browser cache — loading weights onto the GPU…"
+    : "First run: downloading model weights (this is a one-time multi-hundred-MB download)…", 0);
+  if (!cached) toast("First load downloads the full model over the network. It is cached afterwards, so later loads take seconds.", "info");
+
   try {
     if (engine) { await engine.unload().catch(() => {}); engine = null; loadedModel = null; }
     engine = await webllm.CreateMLCEngine(resolved, {
-      initProgressCallback: (r) => setProgress(true, r.text || "Downloading weights into browser cache…", typeof r.progress === "number" ? r.progress : 0)
+      initProgressCallback: (r) => {
+        const pct = typeof r.progress === "number" ? r.progress : 0;
+        const elapsed = (performance.now() - started) / 1000;
+        const eta = pct > 0.02 ? ` · ~${Math.max(0, Math.round(elapsed / pct - elapsed))}s left` : "";
+        setProgress(true, `${r.text || "Loading…"} · ${elapsed.toFixed(0)}s elapsed${eta}`, pct);
+      }
     });
     loadedModel = resolved;
-    setProgress(true, "Ready", 1);
-    setTimeout(() => setProgress(false), 900);
+    setProgress(true, `Ready in ${((performance.now() - started) / 1000).toFixed(1)}s`, 1);
+    setTimeout(() => setProgress(false), 1400);
     $("#loadBtnText").textContent = "Loaded";
     toast(`${resolved} is ready — running on your GPU.`, "ok");
   } catch (e) {
@@ -394,6 +408,7 @@ async function loadModel() {
     toast(`Failed to load model: ${String(e?.message || e).slice(0, 180)}`, "error");
   } finally { loading = false; $("#loadBtn").disabled = false; }
 }
+
 
 async function send() {
   const input = $("#input");
