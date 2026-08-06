@@ -440,38 +440,141 @@ async function send() {
 function openSandbox() { $("#sandbox").classList.remove("translate-x-full"); $("#sandboxScrim").classList.remove("hidden"); }
 function closeSandboxPanel() { $("#sandbox").classList.add("translate-x-full"); $("#sandboxScrim").classList.add("hidden"); }
 
+const MAX_LINES = 500;          // console line cap
+const MAX_CHARS_PER_LINE = 4000; // truncate huge payloads
+let consoleLines = 0;
+
 function logLine(kind, args) {
-  const colors = { log: "text-slate-300", warn: "text-amber-400", error: "text-red-400", result: "text-emerald-400" };
-  const text = args.map(a => {
+  const colors = { log: "text-slate-300", warn: "text-amber-400", error: "text-red-400", result: "text-emerald-400", sys: "text-slate-500" };
+  if (consoleLines >= MAX_LINES) {
+    if (consoleLines === MAX_LINES) {
+      consoleLines++;
+      const cut = el("div", "text-amber-400", "");
+      cut.textContent = `⚠ output truncated at ${MAX_LINES} lines (memory guard)`;
+      $("#console").appendChild(cut);
+    }
+    return;
+  }
+  consoleLines++;
+  let text = args.map(a => {
     if (typeof a === "string") return a;
     try { return JSON.stringify(a, null, 2); } catch { return String(a); }
   }).join(" ");
+  if (text.length > MAX_CHARS_PER_LINE) text = text.slice(0, MAX_CHARS_PER_LINE) + ` … [+${text.length - MAX_CHARS_PER_LINE} chars truncated]`;
   const line = el("div", `whitespace-pre-wrap break-words ${colors[kind] || colors.log}`);
-  line.textContent = (kind === "error" ? "✖ " : kind === "warn" ? "⚠ " : kind === "result" ? "→ " : "› ") + text;
+  line.textContent = (kind === "error" ? "✖ " : kind === "warn" ? "⚠ " : kind === "result" ? "→ " : kind === "sys" ? "• " : "› ") + text;
   $("#console").appendChild(line);
   $("#console").scrollTop = $("#console").scrollHeight;
 }
 
-function runSandbox() {
-  const code = $("#editor").value;
-  logLine("log", ["— run —"]);
-  const scoped = {
-    log: (...a) => logLine("log", a),
-    warn: (...a) => logLine("warn", a),
-    error: (...a) => logLine("error", a),
-    info: (...a) => logLine("log", a),
-    table: (...a) => logLine("log", a),
-    debug: (...a) => logLine("log", a)
+/* Worker source: user code never touches the main thread, so a runaway
+   loop can be terminated instead of freezing the tab. */
+const WORKER_SRC = `
+self.onmessage = async (e) => {
+  const { code, maxMessages } = e.data;
+  let sent = 0;
+  const post = (kind, args) => {
+    if (sent++ > maxMessages) return;
+    let safe;
+    try { safe = args.map(a => (typeof a === 'string' ? a : JSON.parse(JSON.stringify(a, (k, v) => typeof v === 'bigint' ? String(v) : v)))); }
+    catch { safe = args.map(a => String(a)); }
+    self.postMessage({ kind, args: safe });
   };
+  const sandboxConsole = {
+    log: (...a) => post('log', a),
+    info: (...a) => post('log', a),
+    debug: (...a) => post('log', a),
+    table: (...a) => post('log', a),
+    warn: (...a) => post('warn', a),
+    error: (...a) => post('error', a)
+  };
+  const blocked = (name) => () => { throw new Error(name + ' is disabled inside the BroAI sandbox'); };
   try {
-    const fn = new Function("console", `"use strict";\nreturn (async () => {\n${code}\n})();`);
-    Promise.resolve(fn(scoped))
-      .then(v => { if (v !== undefined) logLine("result", [v]); })
-      .catch(err => logLine("error", [err?.stack || String(err)]));
+    const fn = new Function(
+      'console', 'fetch', 'XMLHttpRequest', 'importScripts', 'WebSocket', 'self', 'postMessage', 'globalThis',
+      '"use strict";\\nreturn (async () => {\\n' + code + '\\n})();'
+    );
+    const value = await fn(
+      sandboxConsole, blocked('fetch'), blocked('XMLHttpRequest'), blocked('importScripts'), blocked('WebSocket'),
+      undefined, blocked('postMessage'), undefined
+    );
+    if (value !== undefined) post('result', [value]);
+    self.postMessage({ kind: '__done' });
   } catch (err) {
-    logLine("error", [err?.stack || String(err)]);
+    post('error', [(err && err.stack) || String(err)]);
+    self.postMessage({ kind: '__done' });
+  }
+};
+`;
+
+let worker = null, workerTimer = null, memTimer = null, runStart = 0;
+
+function sandboxRunning(on) {
+  $("#runCode").classList.toggle("hidden", on);
+  $("#killCode").classList.toggle("hidden", !on);
+  $("#runStatus").textContent = on ? "running…" : "";
+}
+
+function stopSandbox(reason) {
+  if (!worker) return;
+  worker.terminate();
+  worker = null;
+  clearTimeout(workerTimer); clearInterval(memTimer);
+  sandboxRunning(false);
+  if (reason) logLine("error", [reason]);
+}
+
+function runSandbox() {
+  stopSandbox(null);
+  consoleLines = 0;
+  $("#console").innerHTML = "";
+  const code = $("#editor").value;
+  const timeoutMs = Number($("#timeLimit").value);
+  const memCapMb = Number($("#memLimit").value);
+  logLine("sys", [`run · time limit ${timeoutMs / 1000}s · memory cap ${memCapMb} MB · network disabled`]);
+
+  let url;
+  try {
+    url = URL.createObjectURL(new Blob([WORKER_SRC], { type: "text/javascript" }));
+    worker = new Worker(url);
+  } catch (err) {
+    logLine("error", ["Could not start sandbox worker: " + String(err)]);
+    return;
+  }
+  URL.revokeObjectURL(url);
+  sandboxRunning(true);
+  runStart = performance.now();
+
+  worker.onmessage = (e) => {
+    const { kind, args } = e.data || {};
+    if (kind === "__done") {
+      const ms = Math.round(performance.now() - runStart);
+      stopSandbox(null);
+      logLine("sys", [`finished in ${ms} ms`]);
+      return;
+    }
+    logLine(kind, args || []);
+  };
+  worker.onerror = (e) => { stopSandbox(null); logLine("error", [e.message || "Worker error"]); };
+
+  workerTimer = setTimeout(() => {
+    stopSandbox(`⏱ execution stopped: exceeded the ${timeoutMs / 1000}s time limit (possible infinite loop).`);
+    toast("Sandbox script timed out and was terminated.", "warn");
+  }, timeoutMs);
+
+  // Memory watchdog: if the tab's heap balloons while user code runs, kill it.
+  const baseline = performance.memory ? performance.memory.usedJSHeapSize : 0;
+  if (performance.memory) {
+    memTimer = setInterval(() => {
+      const usedMb = (performance.memory.usedJSHeapSize - baseline) / 1048576;
+      if (usedMb > memCapMb) {
+        stopSandbox(`💥 execution stopped: script allocated more than ${memCapMb} MB of memory.`);
+        toast("Sandbox script hit the memory cap and was terminated.", "warn");
+      }
+    }, 250);
   }
 }
+
 
 /* ---------------- Theme ---------------- */
 function applyTheme(mode) {
