@@ -644,7 +644,9 @@ $("#sandboxBtn").onclick = openSandbox;
 $("#closeSandbox").onclick = closeSandboxPanel;
 $("#sandboxScrim").onclick = closeSandboxPanel;
 $("#runCode").onclick = runSandbox;
-$("#clearConsole").onclick = () => { $("#console").innerHTML = ""; };
+$("#killCode").onclick = () => { stopSandbox("⏹ stopped by user."); };
+$("#clearConsole").onclick = () => { $("#console").innerHTML = ""; consoleLines = 0; };
+
 $("#themeBtn").onclick = () => applyTheme(document.documentElement.classList.contains("dark") ? "light" : "dark");
 $("#input").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
