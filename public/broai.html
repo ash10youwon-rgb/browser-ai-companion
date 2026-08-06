@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>BroAI — Private Local LLMs in Your Browser</title>
+<meta name="description" content="BroAI runs open LLMs 100% locally in your browser with WebGPU. No servers, no tracking, full privacy." />
+<link rel="icon" href="/favicon.ico" />
+<script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+<script>
+  tailwind.config = {
+    darkMode: 'class',
+    theme: {
+      extend: {
+        fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'], mono: ['JetBrains Mono', 'ui-monospace', 'monospace'] },
+        colors: {
+          brand: { 50:'#eef6ff',100:'#d9ecff',200:'#bcdcff',300:'#8ec6ff',400:'#59a5ff',500:'#3282f6',600:'#1e63db',700:'#1a4fb0',800:'#1b448b',900:'#1b3b70' }
+        },
+        keyframes: {
+          fadeup: { '0%': { opacity: 0, transform: 'translateY(6px)' }, '100%': { opacity: 1, transform: 'none' } },
+          pulseline: { '0%,100%': { opacity: .35 }, '50%': { opacity: 1 } }
+        },
+        animation: { fadeup: 'fadeup .25s ease-out both', pulseline: 'pulseline 1.4s ease-in-out infinite' }
+      }
+    }
+  }
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css" />
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+<script src="https://unpkg.com/lucide@0.451.0/dist/umd/lucide.js"></script>
+<style>
+  html, body { height: 100%; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: rgba(120,130,150,.35); border-radius: 99px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  .msg pre { background:#282c34; border-radius:.75rem; padding:0; overflow:hidden; }
+  .msg pre code { display:block; padding:1rem; overflow-x:auto; font-family:'JetBrains Mono',monospace; font-size:.82rem; line-height:1.55; }
+  .msg :not(pre) > code { background: rgba(125,135,160,.18); padding:.12rem .35rem; border-radius:.35rem; font-family:'JetBrains Mono',monospace; font-size:.85em; }
+  .msg p { margin:.5rem 0; }
+  .msg ul { list-style: disc; margin:.5rem 0 .5rem 1.25rem; }
+  .msg ol { list-style: decimal; margin:.5rem 0 .5rem 1.25rem; }
+  .msg h1,.msg h2,.msg h3 { font-weight:700; margin:.85rem 0 .4rem; }
+  .msg h1{font-size:1.25rem}.msg h2{font-size:1.12rem}.msg h3{font-size:1rem}
+  .msg table { width:100%; border-collapse:collapse; margin:.6rem 0; font-size:.86rem; }
+  .msg th,.msg td { border:1px solid rgba(125,135,160,.3); padding:.35rem .5rem; }
+  .msg blockquote { border-left:3px solid rgba(125,135,160,.5); padding-left:.75rem; opacity:.85; margin:.5rem 0; }
+  .msg a { color:#59a5ff; text-decoration: underline; }
+  .code-wrap { position:relative; margin:.75rem 0; border-radius:.75rem; overflow:hidden; border:1px solid rgba(125,135,160,.25); }
+  .code-bar { display:flex; align-items:center; justify-content:space-between; gap:.5rem; background:#21252b; padding:.35rem .5rem .35rem .75rem; font-size:.7rem; letter-spacing:.04em; text-transform:uppercase; color:#9aa4b8; font-family:'JetBrains Mono',monospace; }
+  .code-bar button { display:inline-flex; align-items:center; gap:.3rem; font-size:.68rem; text-transform:none; letter-spacing:0; padding:.2rem .5rem; border-radius:.4rem; background:rgba(255,255,255,.07); color:#dbe2f0; }
+  .code-bar button:hover { background:rgba(255,255,255,.15); }
+  .cursor-blink::after { content:'▋'; margin-left:2px; animation: pulseline 1.1s infinite; }
+  textarea { field-sizing: content; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-900 dark:bg-[#0b0f17] dark:text-slate-100 font-sans antialiased">
+
+<div class="flex h-screen w-screen overflow-hidden">
+
+  <!-- Sidebar -->
+  <aside id="sidebar" class="fixed inset-y-0 left-0 z-40 w-72 -translate-x-full transform border-r border-slate-200 bg-white transition-transform duration-300 dark:border-white/10 dark:bg-[#0d121c] lg:relative lg:translate-x-0 flex flex-col">
+    <div class="flex items-center justify-between px-4 h-16 border-b border-slate-200 dark:border-white/10">
+      <div class="flex items-center gap-2">
+        <div class="grid h-8 w-8 place-items-center rounded-lg bg-brand-500 text-white font-bold">B</div>
+        <div>
+          <div class="text-sm font-semibold leading-none">BroAI</div>
+          <div class="text-[10px] uppercase tracking-wider text-slate-500">local · private</div>
+        </div>
+      </div>
+      <button id="closeSidebar" class="lg:hidden rounded-md p-1.5 hover:bg-slate-100 dark:hover:bg-white/10"><i data-lucide="x" class="h-4 w-4"></i></button>
+    </div>
+    <div class="p-3">
+      <button id="newChat" class="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-500 px-3 py-2.5 text-sm font-medium text-white hover:bg-brand-600 transition">
+        <i data-lucide="plus" class="h-4 w-4"></i> New chat
+      </button>
+    </div>
+    <div class="px-4 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">History</div>
+    <div id="historyList" class="flex-1 overflow-y-auto px-2 pb-3 space-y-1"></div>
+    <div class="border-t border-slate-200 p-3 text-[11px] text-slate-500 dark:border-white/10 space-y-1">
+      <div class="flex items-center justify-between"><span>WebGPU</span><span id="gpuStat" class="font-mono">checking…</span></div>
+      <div class="flex items-center justify-between"><span>JS heap</span><span id="ramStat" class="font-mono">—</span></div>
+      <div class="flex items-center justify-between"><span>Speed</span><span id="tpsStat" class="font-mono">—</span></div>
+    </div>
+  </aside>
+  <div id="scrim" class="fixed inset-0 z-30 hidden bg-black/50 lg:hidden"></div>
+
+  <!-- Main -->
+  <div class="flex min-w-0 flex-1 flex-col">
+    <header class="flex h-16 shrink-0 items-center gap-2 border-b border-slate-200 bg-white/80 px-3 backdrop-blur dark:border-white/10 dark:bg-[#0b0f17]/80">
+      <button id="openSidebar" class="lg:hidden rounded-md p-2 hover:bg-slate-100 dark:hover:bg-white/10"><i data-lucide="menu" class="h-5 w-5"></i></button>
+      <div class="min-w-0 flex-1 flex items-center gap-2">
+        <select id="modelSelect" class="min-w-0 max-w-[52vw] truncate rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs sm:text-sm dark:border-white/10 dark:bg-white/5"></select>
+        <button id="loadBtn" class="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-2 text-xs sm:text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50">
+          <i data-lucide="cpu" class="h-4 w-4"></i><span id="loadBtnText">Load</span>
+        </button>
+      </div>
+      <button id="sandboxBtn" title="JavaScript sandbox" class="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-white/10"><i data-lucide="terminal" class="h-5 w-5"></i></button>
+      <button id="themeBtn" title="Toggle theme" class="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-white/10"><i data-lucide="sun-moon" class="h-5 w-5"></i></button>
+    </header>
+
+    <div id="progressBanner" class="hidden border-b border-brand-200/60 bg-brand-50 px-4 py-2.5 dark:border-brand-900/40 dark:bg-brand-900/20">
+      <div class="flex items-center justify-between text-xs font-medium text-brand-800 dark:text-brand-200">
+        <span id="progressText">Preparing…</span><span id="progressPct" class="font-mono">0%</span>
+      </div>
+      <div class="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-brand-200/70 dark:bg-white/10">
+        <div id="progressBar" class="h-full w-0 rounded-full bg-brand-500 transition-all duration-200"></div>
+      </div>
+    </div>
+
+    <main id="chatScroll" class="flex-1 overflow-y-auto">
+      <div id="chatInner" class="mx-auto w-full max-w-3xl px-4 py-6 space-y-5"></div>
+    </main>
+
+    <footer class="shrink-0 border-t border-slate-200 bg-white/80 p-3 backdrop-blur dark:border-white/10 dark:bg-[#0b0f17]/80">
+      <div class="mx-auto max-w-3xl">
+        <div class="flex items-end gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm dark:border-white/10 dark:bg-white/5">
+          <textarea id="input" rows="1" placeholder="Ask BroAI anything… (runs on your GPU)" class="max-h-40 flex-1 resize-none bg-transparent px-2 py-2 text-sm outline-none placeholder:text-slate-400"></textarea>
+          <button id="stopBtn" class="hidden rounded-xl bg-red-500/90 p-2.5 text-white hover:bg-red-500"><i data-lucide="square" class="h-4 w-4"></i></button>
+          <button id="sendBtn" class="rounded-xl bg-brand-500 p-2.5 text-white hover:bg-brand-600 disabled:opacity-40"><i data-lucide="arrow-up" class="h-4 w-4"></i></button>
+        </div>
+        <p class="mt-2 text-center text-[11px] text-slate-500">Everything runs locally in your browser. Nothing is uploaded.</p>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Sandbox drawer -->
+  <aside id="sandbox" class="fixed inset-y-0 right-0 z-40 flex w-full max-w-md translate-x-full flex-col border-l border-slate-200 bg-white transition-transform duration-300 dark:border-white/10 dark:bg-[#0d121c]">
+    <div class="flex h-16 items-center justify-between border-b border-slate-200 px-4 dark:border-white/10">
+      <div class="flex items-center gap-2 text-sm font-semibold"><i data-lucide="terminal" class="h-4 w-4"></i> JS Sandbox</div>
+      <div class="flex items-center gap-1">
+        <button id="runCode" class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-emerald-600"><i data-lucide="play" class="h-3.5 w-3.5"></i> Run</button>
+        <button id="clearConsole" class="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-white/10" title="Clear console"><i data-lucide="eraser" class="h-4 w-4"></i></button>
+        <button id="closeSandbox" class="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-white/10"><i data-lucide="x" class="h-4 w-4"></i></button>
+      </div>
+    </div>
+    <textarea id="editor" spellcheck="false" class="h-1/2 w-full resize-none bg-[#282c34] p-3 font-mono text-[12.5px] leading-relaxed text-slate-100 outline-none">// Write JS here, or click "Run in Sandbox" on any code block.
+const nums = [1, 2, 3, 4, 5];
+console.log('sum =', nums.reduce((a, b) => a + b, 0));</textarea>
+    <div class="border-t border-white/10 px-3 py-1.5 text-[10px] uppercase tracking-wider text-slate-500">Console</div>
+    <div id="console" class="flex-1 overflow-y-auto bg-[#1b1f27] p-3 font-mono text-[12px] leading-relaxed text-slate-300 space-y-1"></div>
+  </aside>
+  <div id="sandboxScrim" class="fixed inset-0 z-30 hidden bg-black/50"></div>
+</div>
+
+<div id="toasts" class="pointer-events-none fixed bottom-4 right-4 z-50 flex w-80 flex-col gap-2"></div>
+
+<script type="module">
+import * as webllm from "https://esm.run/@mlc-ai/web-llm";
+
+/* ---------------- Model catalog + fallbacks ---------------- */
+const CATALOG = {
+  "Fast & Light Models": [
+    { id: "Qwen2.5-0.5B-Instruct-q4f16_1-MLC", label: "Qwen 2.5 0.5B Instruct", size: "~0.4 GB" },
+    { id: "Qwen3-0.6B-q4f16_1-MLC", label: "Qwen 3 0.6B (Qwen 3.5 class)", size: "~0.6 GB", fallback: "Qwen2.5-0.5B-Instruct-q4f16_1-MLC" },
+    { id: "gemma-2-2b-it-q4f16_1-MLC", label: "Gemma 3n / Gemma 2B IT", size: "~1.6 GB", fallback: "gemma-2-2b-it-q4f16_1-MLC-1k" },
+    { id: "SmolLM2-1.7B-Instruct-q4f16_1-MLC", label: "SmolLM2 1.7B Instruct", size: "~1.1 GB" },
+    { id: "Llama-3.2-1B-Instruct-q4f16_1-MLC", label: "Llama 3.2 1B Instruct", size: "~0.9 GB" }
+  ],
+  "Mid & Logic Models": [
+    { id: "Llama-3.2-3B-Instruct-q4f16_1-MLC", label: "Llama 3.2 3B Instruct", size: "~2.2 GB" },
+    { id: "SmolLM3-3B-q4f16_1-MLC", label: "SmolLM3 3B", size: "~2.0 GB", fallback: "Llama-3.2-3B-Instruct-q4f16_1-MLC" },
+    { id: "Phi-3.5-mini-instruct-q4f16_1-MLC", label: "Phi-3.5 Mini Instruct", size: "~2.4 GB" },
+    { id: "Phi-4-mini-instruct-q4f16_1-MLC", label: "Phi-4 Mini Instruct", size: "~2.6 GB", fallback: "Phi-3.5-mini-instruct-q4f16_1-MLC" },
+    { id: "Qwen2.5-3B-Instruct-q4f16_1-MLC", label: "Qwen 2.5 3B Instruct", size: "~2.1 GB", fallback: "Qwen2.5-1.5B-Instruct-q4f16_1-MLC" }
+  ]
+};
+
+const AVAILABLE = new Set((webllm.prebuiltAppConfig?.model_list || []).map(m => m.model_id));
+
+/** Resolve a requested model id to something actually shipped by MLC. */
+function resolveModel(id) {
+  if (AVAILABLE.size === 0) return id;
+  if (AVAILABLE.has(id)) return id;
+  const entry = Object.values(CATALOG).flat().find(m => m.id === id);
+  if (entry?.fallback && AVAILABLE.has(entry.fallback)) return entry.fallback;
+  // family-based heuristic fallback
+  const stem = id.split("-").slice(0, 2).join("-").toLowerCase();
+  const near = [...AVAILABLE].find(m => m.toLowerCase().startsWith(stem) && m.includes("q4f16"));
+  if (near) return near;
+  const safe = "Llama-3.2-1B-Instruct-q4f16_1-MLC";
+  return AVAILABLE.has(safe) ? safe : [...AVAILABLE][0];
+}
+
+/* ---------------- DOM helpers ---------------- */
+const $ = (s) => document.querySelector(s);
+const el = (tag, cls, html) => { const n = document.createElement(tag); if (cls) n.className = cls; if (html != null) n.innerHTML = html; return n; };
+const icons = () => window.lucide?.createIcons();
+
+function toast(msg, type = "info") {
+  const colors = { info: "bg-slate-900 dark:bg-white dark:text-slate-900 text-white", error: "bg-red-600 text-white", warn: "bg-amber-500 text-white", ok: "bg-emerald-600 text-white" };
+  const t = el("div", `pointer-events-auto animate-fadeup rounded-xl px-4 py-3 text-sm shadow-lg ${colors[type] || colors.info}`, DOMPurify.sanitize(msg));
+  $("#toasts").appendChild(t);
+  setTimeout(() => { t.style.opacity = "0"; t.style.transition = "opacity .3s"; setTimeout(() => t.remove(), 320); }, 4200);
+}
+
+/* ---------------- Markdown rendering ---------------- */
+marked.setOptions({
+  breaks: true,
+  gfm: true,
+  highlight(code, lang) {
+    try {
+      if (lang && hljs.getLanguage(lang)) return hljs.highlight(code, { language: lang }).value;
+      return hljs.highlightAuto(code).value;
+    } catch { return code; }
+  }
+});
+
+function renderMarkdown(container, text) {
+  const raw = marked.parse(text || "");
+  container.innerHTML = DOMPurify.sanitize(raw, { ADD_ATTR: ["target"] });
+  container.querySelectorAll("pre > code").forEach((code) => {
+    const pre = code.parentElement;
+    if (pre.parentElement?.classList.contains("code-wrap")) return;
+    const lang = (code.className.match(/language-([\w+#-]+)/) || [, "code"])[1];
+    const wrap = el("div", "code-wrap");
+    const bar = el("div", "code-bar");
+    bar.appendChild(el("span", "", lang));
+    const actions = el("div", "flex items-center gap-1");
+    const copyBtn = el("button", "", '<i data-lucide="copy" class="h-3 w-3"></i>Copy');
+    copyBtn.onclick = () => { navigator.clipboard.writeText(code.textContent || ""); toast("Copied to clipboard", "ok"); };
+    actions.appendChild(copyBtn);
+    if (/^(js|javascript|jsx|ts|typescript|node)$/i.test(lang)) {
+      const runBtn = el("button", "", '<i data-lucide="play" class="h-3 w-3"></i>Run in Sandbox');
+      runBtn.onclick = () => { $("#editor").value = code.textContent || ""; openSandbox(); runSandbox(); };
+      actions.appendChild(runBtn);
+    }
+    bar.appendChild(actions);
+    pre.replaceWith(wrap);
+    wrap.appendChild(bar);
+    wrap.appendChild(pre);
+  });
+  icons();
+}
+
+/* ---------------- Conversation store ---------------- */
+const STORE_KEY = "broai.chats.v1";
+let chats = [];
+let currentId = null;
+
+function loadStore() { try { chats = JSON.parse(localStorage.getItem(STORE_KEY) || "[]"); } catch { chats = []; } }
+function saveStore() { try { localStorage.setItem(STORE_KEY, JSON.stringify(chats)); } catch {} }
+function current() { return chats.find(c => c.id === currentId); }
+
+function newChat() {
+  const chat = { id: crypto.randomUUID(), title: "New chat", messages: [], updated: Date.now() };
+  chats.unshift(chat); currentId = chat.id; saveStore(); renderHistory(); renderChat(); closeSidebar();
+}
+function deleteChat(id) {
+  chats = chats.filter(c => c.id !== id);
+  if (currentId === id) currentId = chats[0]?.id ?? null;
+  if (!currentId) newChat(); else { saveStore(); renderHistory(); renderChat(); }
+}
+function autoTitle(chat, prompt) {
+  if (chat.title !== "New chat") return;
+  const t = prompt.replace(/\s+/g, " ").trim();
+  chat.title = t.length > 38 ? t.slice(0, 38) + "…" : (t || "New chat");
+}
+
+function renderHistory() {
+  const list = $("#historyList"); list.innerHTML = "";
+  if (!chats.length) { list.appendChild(el("div", "px-3 py-6 text-center text-xs text-slate-500", "No conversations yet")); return; }
+  chats.forEach(c => {
+    const active = c.id === currentId;
+    const row = el("div", `group flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${active ? "bg-brand-500/10 text-brand-700 dark:text-brand-200" : "hover:bg-slate-100 dark:hover:bg-white/5"}`);
+    row.appendChild(el("i", "shrink-0").outerHTML ? (() => { const i = el("i", "h-4 w-4 shrink-0"); i.setAttribute("data-lucide", "message-square"); return i; })() : el("span"));
+    const label = el("span", "min-w-0 flex-1 truncate"); label.textContent = c.title; row.appendChild(label);
+    const del = el("button", "opacity-0 group-hover:opacity-100 rounded p-1 hover:bg-red-500/15 hover:text-red-500");
+    del.innerHTML = '<i data-lucide="trash-2" class="h-3.5 w-3.5"></i>';
+    del.onclick = (e) => { e.stopPropagation(); deleteChat(c.id); };
+    row.appendChild(del);
+    row.onclick = () => { currentId = c.id; renderHistory(); renderChat(); closeSidebar(); };
+    list.appendChild(row);
+  });
+  icons();
+}
+
+/* ---------------- Chat rendering ---------------- */
+function emptyState() {
+  const wrap = el("div", "flex flex-col items-center justify-center gap-3 py-20 text-center animate-fadeup");
+  wrap.appendChild(el("div", "grid h-14 w-14 place-items-center rounded-2xl bg-brand-500 text-2xl font-bold text-white", "B"));
+  wrap.appendChild(el("h1", "text-2xl font-semibold", "BroAI runs entirely on your device"));
+  wrap.appendChild(el("p", "max-w-md text-sm text-slate-500", "Pick a model above, hit Load to stream the weights into your browser cache, then chat with zero servers involved."));
+  const chips = el("div", "mt-2 flex flex-wrap justify-center gap-2");
+  ["Explain WebGPU in simple terms", "Write a JS debounce function", "Summarize the pros of local LLMs"].forEach(p => {
+    const b = el("button", "rounded-full border border-slate-200 px-3 py-1.5 text-xs hover:bg-slate-100 dark:border-white/10 dark:hover:bg-white/5", p);
+    b.onclick = () => { $("#input").value = p; send(); };
+    chips.appendChild(b);
+  });
+  wrap.appendChild(chips);
+  return wrap;
+}
+
+function messageNode(role, content) {
+  const row = el("div", `flex gap-3 animate-fadeup ${role === "user" ? "justify-end" : ""}`);
+  if (role === "assistant") {
+    const av = el("div", "mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-500 text-xs font-bold text-white", "B");
+    row.appendChild(av);
+  }
+  const bubble = el("div", role === "user"
+    ? "max-w-[85%] rounded-2xl rounded-br-sm bg-brand-500 px-4 py-2.5 text-sm text-white"
+    : "msg min-w-0 flex-1 text-sm leading-relaxed");
+  if (role === "user") bubble.textContent = content; else renderMarkdown(bubble, content);
+  row.appendChild(bubble);
+  return { row, bubble };
+}
+
+function renderChat() {
+  const box = $("#chatInner"); box.innerHTML = "";
+  const chat = current();
+  if (!chat || !chat.messages.length) { box.appendChild(emptyState()); icons(); return; }
+  chat.messages.forEach(m => box.appendChild(messageNode(m.role, m.content).row));
+  icons(); scrollToBottom(true);
+}
+
+let autoStick = true;
+$("#chatScroll").addEventListener("scroll", () => {
+  const s = $("#chatScroll");
+  autoStick = s.scrollHeight - s.scrollTop - s.clientHeight < 90;
+});
+function scrollToBottom(force) {
+  if (!force && !autoStick) return;
+  const s = $("#chatScroll");
+  s.scrollTo({ top: s.scrollHeight, behavior: force ? "auto" : "smooth" });
+}
+
+/* ---------------- Engine ---------------- */
+let engine = null, loadedModel = null, loading = false, generating = false, abortRequested = false;
+
+function setProgress(show, text, pct) {
+  $("#progressBanner").classList.toggle("hidden", !show);
+  if (text != null) $("#progressText").textContent = text;
+  if (pct != null) { $("#progressBar").style.width = `${Math.round(pct * 100)}%`; $("#progressPct").textContent = `${Math.round(pct * 100)}%`; }
+}
+
+async function detectGPU() {
+  if (!("gpu" in navigator)) { $("#gpuStat").textContent = "unavailable"; $("#gpuStat").className = "font-mono text-red-500"; toast("WebGPU is not available in this browser. Use Chrome/Edge 113+ or Safari 18+ on a GPU-capable device.", "error"); return false; }
+  try {
+    const adapter = await navigator.gpu.requestAdapter();
+    if (!adapter) { $("#gpuStat").textContent = "no adapter"; $("#gpuStat").className = "font-mono text-amber-500"; toast("WebGPU exists but no GPU adapter was found. Model loading will fail.", "warn"); return false; }
+    $("#gpuStat").textContent = "accelerated"; $("#gpuStat").className = "font-mono text-emerald-500";
+    return true;
+  } catch (e) { $("#gpuStat").textContent = "error"; $("#gpuStat").className = "font-mono text-red-500"; return false; }
+}
+
+async function loadModel() {
+  if (loading) return;
+  const requested = $("#modelSelect").value;
+  const resolved = resolveModel(requested);
+  if (resolved !== requested) toast(`“${requested}” has no MLC build — falling back to <b>${resolved}</b>.`, "warn");
+  if (engine && loadedModel === resolved) { toast("Model already loaded", "ok"); return; }
+  if (!(await detectGPU())) return;
+
+  loading = true; $("#loadBtn").disabled = true; $("#loadBtnText").textContent = "Loading…";
+  setProgress(true, "Initializing WebGPU engine…", 0);
+  try {
+    if (engine) { await engine.unload().catch(() => {}); engine = null; loadedModel = null; }
+    engine = await webllm.CreateMLCEngine(resolved, {
+      initProgressCallback: (r) => setProgress(true, r.text || "Downloading weights into browser cache…", typeof r.progress === "number" ? r.progress : 0)
+    });
+    loadedModel = resolved;
+    setProgress(true, "Ready", 1);
+    setTimeout(() => setProgress(false), 900);
+    $("#loadBtnText").textContent = "Loaded";
+    toast(`${resolved} is ready — running on your GPU.`, "ok");
+  } catch (e) {
+    console.error(e);
+    setProgress(false);
+    $("#loadBtnText").textContent = "Load";
+    toast(`Failed to load model: ${String(e?.message || e).slice(0, 180)}`, "error");
+  } finally { loading = false; $("#loadBtn").disabled = false; }
+}
+
+async function send() {
+  const input = $("#input");
+  const text = input.value.trim();
+  if (!text || generating) return;
+  if (!engine) { toast("Load a model first (button in the header).", "warn"); return; }
+  const chat = current() || (newChat(), current());
+  input.value = ""; input.style.height = "auto";
+
+  autoTitle(chat, text);
+  chat.messages.push({ role: "user", content: text });
+  chat.updated = Date.now(); saveStore(); renderHistory();
+
+  const box = $("#chatInner");
+  if (box.querySelector("h1")) box.innerHTML = "";
+  box.appendChild(messageNode("user", text).row);
+  const { row, bubble } = messageNode("assistant", "");
+  bubble.classList.add("cursor-blink");
+  box.appendChild(row);
+  scrollToBottom(true);
+
+  generating = true; abortRequested = false;
+  $("#sendBtn").classList.add("hidden"); $("#stopBtn").classList.remove("hidden");
+
+  let acc = "", tokens = 0;
+  const start = performance.now();
+  try {
+    const stream = await engine.chat.completions.create({
+      stream: true,
+      temperature: 0.7,
+      max_tokens: 1536,
+      messages: [
+        { role: "system", content: "You are BroAI, a helpful, concise assistant running fully offline in the user's browser. Use markdown and fenced code blocks with language tags." },
+        ...chat.messages.map(m => ({ role: m.role, content: m.content }))
+      ]
+    });
+    for await (const chunk of stream) {
+      if (abortRequested) { await engine.interruptGenerate?.(); break; }
+      const delta = chunk.choices?.[0]?.delta?.content || "";
+      if (!delta) continue;
+      acc += delta; tokens++;
+      renderMarkdown(bubble, acc);
+      bubble.classList.add("cursor-blink");
+      const secs = (performance.now() - start) / 1000;
+      if (secs > 0.2) $("#tpsStat").textContent = `${(tokens / secs).toFixed(1)} t/s`;
+      scrollToBottom(false);
+    }
+  } catch (e) {
+    console.error(e);
+    acc = acc || `**Generation failed:** ${String(e?.message || e)}`;
+    toast("Generation error — see console.", "error");
+  } finally {
+    bubble.classList.remove("cursor-blink");
+    renderMarkdown(bubble, acc || "_(empty response)_");
+    chat.messages.push({ role: "assistant", content: acc });
+    chat.updated = Date.now(); saveStore(); renderHistory();
+    generating = false;
+    $("#sendBtn").classList.remove("hidden"); $("#stopBtn").classList.add("hidden");
+    scrollToBottom(false);
+  }
+}
+
+/* ---------------- Sandbox ---------------- */
+function openSandbox() { $("#sandbox").classList.remove("translate-x-full"); $("#sandboxScrim").classList.remove("hidden"); }
+function closeSandboxPanel() { $("#sandbox").classList.add("translate-x-full"); $("#sandboxScrim").classList.add("hidden"); }
+
+function logLine(kind, args) {
+  const colors = { log: "text-slate-300", warn: "text-amber-400", error: "text-red-400", result: "text-emerald-400" };
+  const text = args.map(a => {
+    if (typeof a === "string") return a;
+    try { return JSON.stringify(a, null, 2); } catch { return String(a); }
+  }).join(" ");
+  const line = el("div", `whitespace-pre-wrap break-words ${colors[kind] || colors.log}`);
+  line.textContent = (kind === "error" ? "✖ " : kind === "warn" ? "⚠ " : kind === "result" ? "→ " : "› ") + text;
+  $("#console").appendChild(line);
+  $("#console").scrollTop = $("#console").scrollHeight;
+}
+
+function runSandbox() {
+  const code = $("#editor").value;
+  logLine("log", ["— run —"]);
+  const scoped = {
+    log: (...a) => logLine("log", a),
+    warn: (...a) => logLine("warn", a),
+    error: (...a) => logLine("error", a),
+    info: (...a) => logLine("log", a),
+    table: (...a) => logLine("log", a),
+    debug: (...a) => logLine("log", a)
+  };
+  try {
+    const fn = new Function("console", `"use strict";\nreturn (async () => {\n${code}\n})();`);
+    Promise.resolve(fn(scoped))
+      .then(v => { if (v !== undefined) logLine("result", [v]); })
+      .catch(err => logLine("error", [err?.stack || String(err)]));
+  } catch (err) {
+    logLine("error", [err?.stack || String(err)]);
+  }
+}
+
+/* ---------------- Theme ---------------- */
+function applyTheme(mode) {
+  document.documentElement.classList.toggle("dark", mode === "dark");
+  localStorage.setItem("broai.theme", mode);
+}
+
+/* ---------------- Stats ---------------- */
+setInterval(() => {
+  const mem = performance.memory;
+  if (mem) $("#ramStat").textContent = `${(mem.usedJSHeapSize / 1048576).toFixed(0)} MB`;
+  else $("#ramStat").textContent = "n/a";
+}, 1500);
+
+/* ---------------- Wiring ---------------- */
+function openSidebar() { $("#sidebar").classList.remove("-translate-x-full"); $("#scrim").classList.remove("hidden"); }
+function closeSidebar() { if (window.innerWidth < 1024) { $("#sidebar").classList.add("-translate-x-full"); $("#scrim").classList.add("hidden"); } }
+
+function buildModelSelect() {
+  const sel = $("#modelSelect");
+  Object.entries(CATALOG).forEach(([group, models]) => {
+    const og = el("optgroup"); og.label = group;
+    models.forEach(m => {
+      const o = el("option");
+      o.value = m.id;
+      const resolved = resolveModel(m.id);
+      o.textContent = `${m.label} · ${m.size}${resolved !== m.id ? " (fallback)" : ""}`;
+      og.appendChild(o);
+    });
+    sel.appendChild(og);
+  });
+  sel.value = localStorage.getItem("broai.model") || "Llama-3.2-1B-Instruct-q4f16_1-MLC";
+  if (!sel.value) sel.selectedIndex = 0;
+  sel.onchange = () => { localStorage.setItem("broai.model", sel.value); $("#loadBtnText").textContent = "Load"; };
+}
+
+$("#openSidebar").onclick = openSidebar;
+$("#closeSidebar").onclick = closeSidebar;
+$("#scrim").onclick = closeSidebar;
+$("#newChat").onclick = newChat;
+$("#loadBtn").onclick = loadModel;
+$("#sendBtn").onclick = send;
+$("#stopBtn").onclick = () => { abortRequested = true; };
+$("#sandboxBtn").onclick = openSandbox;
+$("#closeSandbox").onclick = closeSandboxPanel;
+$("#sandboxScrim").onclick = closeSandboxPanel;
+$("#runCode").onclick = runSandbox;
+$("#clearConsole").onclick = () => { $("#console").innerHTML = ""; };
+$("#themeBtn").onclick = () => applyTheme(document.documentElement.classList.contains("dark") ? "light" : "dark");
+$("#input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
+});
+$("#input").addEventListener("input", (e) => { e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 160) + "px"; });
+
+/* ---------------- Boot ---------------- */
+applyTheme(localStorage.getItem("broai.theme") || "dark");
+buildModelSelect();
+loadStore();
+if (!chats.length) newChat(); else { currentId = chats[0].id; renderHistory(); renderChat(); }
+icons();
+detectGPU();
+window.__broaiRunSandbox = runSandbox;
+</script>
+</body>
+</html>
