@@ -134,15 +134,35 @@
       <div class="flex items-center gap-2 text-sm font-semibold"><i data-lucide="terminal" class="h-4 w-4"></i> JS Sandbox</div>
       <div class="flex items-center gap-1">
         <button id="runCode" class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-emerald-600"><i data-lucide="play" class="h-3.5 w-3.5"></i> Run</button>
+        <button id="killCode" class="hidden inline-flex items-center gap-1.5 rounded-lg bg-red-500 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-red-600"><i data-lucide="square" class="h-3.5 w-3.5"></i> Stop</button>
         <button id="clearConsole" class="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-white/10" title="Clear console"><i data-lucide="eraser" class="h-4 w-4"></i></button>
         <button id="closeSandbox" class="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-white/10"><i data-lucide="x" class="h-4 w-4"></i></button>
       </div>
     </div>
-    <textarea id="editor" spellcheck="false" class="h-1/2 w-full resize-none bg-[#282c34] p-3 font-mono text-[12.5px] leading-relaxed text-slate-100 outline-none">// Write JS here, or click "Run in Sandbox" on any code block.
+    <div class="flex flex-wrap items-center gap-2 border-b border-slate-200 px-4 py-2 text-[11px] text-slate-500 dark:border-white/10">
+      <label class="flex items-center gap-1"><i data-lucide="timer" class="h-3.5 w-3.5"></i>
+        <select id="timeLimit" class="rounded-md border border-slate-200 bg-transparent px-1.5 py-1 dark:border-white/10">
+          <option value="1000">1s</option>
+          <option value="5000" selected>5s</option>
+          <option value="15000">15s</option>
+          <option value="30000">30s</option>
+        </select>
+      </label>
+      <label class="flex items-center gap-1"><i data-lucide="memory-stick" class="h-3.5 w-3.5"></i>
+        <select id="memLimit" class="rounded-md border border-slate-200 bg-transparent px-1.5 py-1 dark:border-white/10">
+          <option value="128">128 MB</option>
+          <option value="256" selected>256 MB</option>
+          <option value="512">512 MB</option>
+        </select>
+      </label>
+      <span class="ml-auto font-mono text-emerald-500" id="runStatus"></span>
+    </div>
+    <textarea id="editor" spellcheck="false" class="h-1/2 w-full resize-none bg-[#282c34] p-3 font-mono text-[12.5px] leading-relaxed text-slate-100 outline-none">// Runs in an isolated worker: time-limited, memory-capped, no network.
 const nums = [1, 2, 3, 4, 5];
 console.log('sum =', nums.reduce((a, b) => a + b, 0));</textarea>
     <div class="border-t border-white/10 px-3 py-1.5 text-[10px] uppercase tracking-wider text-slate-500">Console</div>
     <div id="console" class="flex-1 overflow-y-auto bg-[#1b1f27] p-3 font-mono text-[12px] leading-relaxed text-slate-300 space-y-1"></div>
+
   </aside>
   <div id="sandboxScrim" class="fixed inset-0 z-30 hidden bg-black/50"></div>
 </div>
