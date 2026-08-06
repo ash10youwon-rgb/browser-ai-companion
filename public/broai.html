@@ -267,7 +267,7 @@ function renderHistory() {
   chats.forEach(c => {
     const active = c.id === currentId;
     const row = el("div", `group flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${active ? "bg-brand-500/10 text-brand-700 dark:text-brand-200" : "hover:bg-slate-100 dark:hover:bg-white/5"}`);
-    row.appendChild(el("i", "shrink-0").outerHTML ? (() => { const i = el("i", "h-4 w-4 shrink-0"); i.setAttribute("data-lucide", "message-square"); return i; })() : el("span"));
+    const ico = el("i", "h-4 w-4 shrink-0"); ico.setAttribute("data-lucide", "message-square"); row.appendChild(ico);
     const label = el("span", "min-w-0 flex-1 truncate"); label.textContent = c.title; row.appendChild(label);
     const del = el("button", "opacity-0 group-hover:opacity-100 rounded p-1 hover:bg-red-500/15 hover:text-red-500");
     del.innerHTML = '<i data-lucide="trash-2" class="h-3.5 w-3.5"></i>';
