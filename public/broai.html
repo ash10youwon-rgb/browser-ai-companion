@@ -576,6 +576,8 @@ function runSandbox() {
     logLine(kind, args || []);
   };
   worker.onerror = (e) => { stopSandbox(null); logLine("error", [e.message || "Worker error"]); };
+  worker.postMessage({ code, maxMessages: MAX_LINES });
+
 
   workerTimer = setTimeout(() => {
     stopSandbox(`⏱ execution stopped: exceeded the ${timeoutMs / 1000}s time limit (possible infinite loop).`);
