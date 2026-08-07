@@ -182,6 +182,20 @@ console.log('sum =', nums.reduce((a, b) => a + b, 0));</textarea>
   <div id="sandboxScrim" class="fixed inset-0 z-30 hidden bg-black/50"></div>
 </div>
 
+<!-- Info modal: About / Help / Readme / License -->
+<div id="infoModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/60 p-4">
+  <div class="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-white/10 dark:bg-[#0d121c]">
+    <div class="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-white/10">
+      <h2 id="infoTitle" class="text-sm font-semibold">About BroAI</h2>
+      <button id="closeInfo" class="rounded-lg p-1.5 hover:bg-slate-100 dark:hover:bg-white/10"><i data-lucide="x" class="h-4 w-4"></i></button>
+    </div>
+    <div id="infoBody" class="msg overflow-y-auto px-4 py-3 text-sm leading-relaxed"></div>
+    <div class="border-t border-slate-200 px-4 py-2.5 text-[11px] text-slate-500 dark:border-white/10">
+      © 2026 BroAI · MIT License · All rights reserved.
+    </div>
+  </div>
+</div>
+
 <div id="toasts" class="pointer-events-none fixed bottom-4 right-4 z-50 flex w-80 flex-col gap-2"></div>
 
 <script type="module">
