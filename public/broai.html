@@ -442,6 +442,7 @@ async function send() {
 
   let acc = "", tokens = 0;
   const start = performance.now();
+  const typer = createTyper(bubble);
   try {
     const stream = await engine.chat.completions.create({
       stream: true,
@@ -457,19 +458,17 @@ async function send() {
       const delta = chunk.choices?.[0]?.delta?.content || "";
       if (!delta) continue;
       acc += delta; tokens++;
-      renderMarkdown(bubble, acc);
-      bubble.classList.add("cursor-blink");
+      typer.push(delta);
       const secs = (performance.now() - start) / 1000;
       if (secs > 0.2) $("#tpsStat").textContent = `${(tokens / secs).toFixed(1)} t/s`;
-      scrollToBottom(false);
     }
   } catch (e) {
     console.error(e);
     acc = acc || `**Generation failed:** ${String(e?.message || e)}`;
     toast("Generation error — see console.", "error");
   } finally {
+    await typer.finish(acc || "_(empty response)_");
     bubble.classList.remove("cursor-blink");
-    renderMarkdown(bubble, acc || "_(empty response)_");
     chat.messages.push({ role: "assistant", content: acc });
     chat.updated = Date.now(); saveStore(); renderHistory();
     generating = false;
@@ -477,6 +476,59 @@ async function send() {
     scrollToBottom(false);
   }
 }
+
+/* ---- Smooth typewriter: decouples token bursts from painting ---- */
+function createTyper(bubble) {
+  let target = "", shown = 0, raf = 0, last = 0, done = null, finalText = null;
+  bubble.classList.add("cursor-blink");
+
+  const paint = () => {
+    // Render markdown at most once per frame, plain-ish while streaming.
+    renderMarkdown(bubble, target.slice(0, shown));
+    bubble.classList.add("cursor-blink");
+    scrollToBottom(false);
+  };
+
+  const step = (now) => {
+    const dt = Math.min(64, now - (last || now));
+    last = now;
+    const remaining = target.length - shown;
+    if (remaining > 0) {
+      // Speed adapts to backlog so it never lags far behind, never machine-guns.
+      const cps = Math.max(45, Math.min(900, remaining * 12));
+      const advance = Math.max(1, Math.round((cps * dt) / 1000));
+      shown = Math.min(target.length, shown + advance);
+      paint();
+    }
+    if (finalText !== null && shown >= target.length) {
+      raf = 0;
+      renderMarkdown(bubble, finalText);
+      scrollToBottom(false);
+      done?.();
+      return;
+    }
+    raf = requestAnimationFrame(step);
+  };
+
+  const start = () => { if (!raf) { last = 0; raf = requestAnimationFrame(step); } };
+  start();
+
+  return {
+    push(delta) { target += delta; start(); },
+    finish(text) {
+      finalText = text;
+      target = text;
+      start();
+      return new Promise((res) => {
+        done = () => res();
+        // Safety net in case rAF is throttled (background tab).
+        setTimeout(() => { if (raf) { cancelAnimationFrame(raf); raf = 0; renderMarkdown(bubble, text); res(); } }, 2500);
+      });
+    }
+  };
+}
+
+
 
 /* ---------------- Sandbox ---------------- */
 function openSandbox() { $("#sandbox").classList.remove("translate-x-full"); $("#sandboxScrim").classList.remove("hidden"); }
