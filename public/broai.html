@@ -499,11 +499,10 @@ async function send() {
 
 /* ---- Smooth typewriter: decouples token bursts from painting ---- */
 function createTyper(bubble) {
-  let target = "", shown = 0, raf = 0, last = 0, done = null, finalText = null;
+  let target = "", shown = 0, raf = 0, last = 0, done = null, finalText = null, acc = 0;
   bubble.classList.add("cursor-blink");
 
   const paint = () => {
-    // Render markdown at most once per frame, plain-ish while streaming.
     renderMarkdown(bubble, target.slice(0, shown));
     bubble.classList.add("cursor-blink");
     scrollStick();
@@ -514,11 +513,19 @@ function createTyper(bubble) {
     last = now;
     const remaining = target.length - shown;
     if (remaining > 0) {
-      // Speed adapts to backlog so it never lags far behind, never machine-guns.
-      const cps = Math.max(45, Math.min(900, remaining * 12));
-      const advance = Math.max(1, Math.round((cps * dt) / 1000));
-      shown = Math.min(target.length, shown + advance);
-      paint();
+      // User-controlled smoothness: 0 = ultra smooth/slow, 100 = instant.
+      const s = prefs.smoothness / 100;
+      const base = 18 + s * s * 900;                 // chars/sec floor
+      const catchUp = remaining * (0.8 + s * 14);    // never lag far behind
+      let cps = Math.max(base, Math.min(1400, catchUp));
+      if (prefs.reduceMotion) cps = Math.min(cps, 90);
+      acc += (cps * dt) / 1000;
+      const advance = Math.floor(acc);
+      if (advance >= 1) {
+        acc -= advance;
+        shown = Math.min(target.length, shown + advance);
+        paint();
+      }
     }
     if (finalText !== null && shown >= target.length) {
       raf = 0;
@@ -530,7 +537,7 @@ function createTyper(bubble) {
     raf = requestAnimationFrame(step);
   };
 
-  const start = () => { if (!raf) { last = 0; raf = requestAnimationFrame(step); } };
+  const start = () => { if (!raf) { last = 0; acc = 0; raf = requestAnimationFrame(step); } };
   start();
 
   return {
@@ -542,7 +549,7 @@ function createTyper(bubble) {
       return new Promise((res) => {
         done = () => res();
         // Safety net in case rAF is throttled (background tab).
-        setTimeout(() => { if (raf) { cancelAnimationFrame(raf); raf = 0; renderMarkdown(bubble, text); res(); } }, 2500);
+        setTimeout(() => { if (raf) { cancelAnimationFrame(raf); raf = 0; renderMarkdown(bubble, text); res(); } }, 4000);
       });
     }
   };
