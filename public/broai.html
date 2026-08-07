@@ -96,6 +96,24 @@
     </div>
     <div class="px-4 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">History</div>
     <div id="historyList" class="flex-1 overflow-y-auto px-2 pb-3 space-y-1"></div>
+    <div class="border-t border-slate-200 px-3 py-3 text-[11px] text-slate-500 dark:border-white/10 space-y-2.5">
+      <div>
+        <div class="flex items-center justify-between">
+          <label for="smoothRange" class="font-medium text-slate-600 dark:text-slate-300">Streaming smoothness</label>
+          <span id="smoothVal" class="font-mono">—</span>
+        </div>
+        <input id="smoothRange" type="range" min="0" max="100" step="1" class="mt-1.5 w-full accent-brand-500" />
+        <div class="flex justify-between text-[10px] text-slate-400"><span>Smoothest</span><span>Instant</span></div>
+      </div>
+      <label class="flex items-center justify-between gap-2">
+        <span class="font-medium text-slate-600 dark:text-slate-300">Reduce motion</span>
+        <input id="reduceMotion" type="checkbox" class="h-4 w-4 accent-brand-500" />
+      </label>
+      <div class="grid grid-cols-2 gap-2 pt-0.5">
+        <button id="clearChat" class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-2 py-1.5 hover:bg-slate-100 dark:border-white/10 dark:hover:bg-white/10"><i data-lucide="eraser" class="h-3.5 w-3.5"></i> Clear chat</button>
+        <button id="clearHistory" class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-red-300/60 px-2 py-1.5 text-red-500 hover:bg-red-500/10 dark:border-red-500/30"><i data-lucide="trash-2" class="h-3.5 w-3.5"></i> Clear all</button>
+      </div>
+    </div>
     <div class="border-t border-slate-200 p-3 text-[11px] text-slate-500 dark:border-white/10 space-y-1">
       <div class="flex items-center justify-between"><span>WebGPU</span><span id="gpuStat" class="font-mono">checking…</span></div>
       <div class="flex items-center justify-between"><span>JS heap</span><span id="ramStat" class="font-mono">—</span></div>
