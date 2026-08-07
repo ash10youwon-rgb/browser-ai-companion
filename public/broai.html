@@ -174,8 +174,15 @@ import * as webllm from "https://esm.run/@mlc-ai/web-llm";
 
 /* ---------------- Model catalog + fallbacks ---------------- */
 const CATALOG = {
+  "Micro & Instant Models": [
+    { id: "SmolLM2-135M-Instruct-q0f16-MLC", label: "SmolLM2 135M — instant", size: "~270 MB" },
+    { id: "SmolLM2-360M-Instruct-q4f16_1-MLC", label: "SmolLM2 360M — better chat", size: "~380 MB", fallback: "SmolLM2-360M-Instruct-q0f16-MLC" },
+    { id: "Qwen2.5-0.5B-Instruct-q4f16_1-MLC", label: "Qwen 2.5 0.5B — fast multilingual", size: "~350–500 MB" },
+    { id: "Bonsai-1.7B-1bit-MLC", label: "Bonsai 1.7B (1-bit) — experimental", size: "~290 MB", fallback: "SmolLM2-360M-Instruct-q4f16_1-MLC" }
+  ],
   "Fast & Light Models": [
-    { id: "Qwen2.5-0.5B-Instruct-q4f16_1-MLC", label: "Qwen 2.5 0.5B Instruct", size: "~0.4 GB" },
+    { id: "Qwen2.5-0.5B-Instruct-q0f16-MLC", label: "Qwen 2.5 0.5B (fp16)", size: "~1.0 GB", fallback: "Qwen2.5-0.5B-Instruct-q4f16_1-MLC" },
+
     { id: "Qwen3-0.6B-q4f16_1-MLC", label: "Qwen 3 0.6B (Qwen 3.5 class)", size: "~0.6 GB", fallback: "Qwen2.5-0.5B-Instruct-q4f16_1-MLC" },
     { id: "gemma-2-2b-it-q4f16_1-MLC", label: "Gemma 3n / Gemma 2B IT", size: "~1.6 GB", fallback: "gemma-2-2b-it-q4f16_1-MLC-1k" },
     { id: "SmolLM2-1.7B-Instruct-q4f16_1-MLC", label: "SmolLM2 1.7B Instruct", size: "~1.1 GB" },
@@ -643,7 +650,7 @@ function buildModelSelect() {
     });
     sel.appendChild(og);
   });
-  sel.value = localStorage.getItem("broai.model") || "Qwen2.5-0.5B-Instruct-q4f16_1-MLC";
+  sel.value = localStorage.getItem("broai.model") || "SmolLM2-135M-Instruct-q0f16-MLC";
   if (!sel.value) sel.selectedIndex = 0;
   sel.onchange = () => { localStorage.setItem("broai.model", sel.value); $("#loadBtnText").textContent = "Load"; };
 }
