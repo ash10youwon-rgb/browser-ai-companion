@@ -56,6 +56,21 @@
   .code-bar button:hover { background:rgba(255,255,255,.15); }
   .cursor-blink::after { content:'▋'; margin-left:2px; animation: pulseline 1.1s infinite; }
   textarea { field-sizing: content; }
+  /* Text rendering tuned for fluid streaming */
+  body, .msg {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-synthesis: none;
+    font-variant-ligatures: none;
+    font-kerning: normal;
+  }
+  .msg { text-wrap: pretty; overflow-wrap: anywhere; backface-visibility: hidden; transform: translateZ(0); }
+  .msg pre code { text-rendering: optimizeSpeed; font-variant-ligatures: none; }
+  /* Keep the reading position stable: no browser scroll anchoring fights */
+  #chatScroll { overflow-anchor: none; scroll-behavior: auto; overscroll-behavior: contain; }
+  .reduce-motion * { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+  @media (prefers-reduced-motion: reduce) { * { animation-duration: .001ms !important; transition-duration: .001ms !important; } }
 </style>
 </head>
 <body class="bg-slate-50 text-slate-900 dark:bg-[#0b0f17] dark:text-slate-100 font-sans antialiased">
@@ -81,6 +96,24 @@
     </div>
     <div class="px-4 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">History</div>
     <div id="historyList" class="flex-1 overflow-y-auto px-2 pb-3 space-y-1"></div>
+    <div class="border-t border-slate-200 px-3 py-3 text-[11px] text-slate-500 dark:border-white/10 space-y-2.5">
+      <div>
+        <div class="flex items-center justify-between">
+          <label for="smoothRange" class="font-medium text-slate-600 dark:text-slate-300">Streaming smoothness</label>
+          <span id="smoothVal" class="font-mono">—</span>
+        </div>
+        <input id="smoothRange" type="range" min="0" max="100" step="1" class="mt-1.5 w-full accent-brand-500" />
+        <div class="flex justify-between text-[10px] text-slate-400"><span>Smoothest</span><span>Instant</span></div>
+      </div>
+      <label class="flex items-center justify-between gap-2">
+        <span class="font-medium text-slate-600 dark:text-slate-300">Reduce motion</span>
+        <input id="reduceMotion" type="checkbox" class="h-4 w-4 accent-brand-500" />
+      </label>
+      <div class="grid grid-cols-2 gap-2 pt-0.5">
+        <button id="clearChat" class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-2 py-1.5 hover:bg-slate-100 dark:border-white/10 dark:hover:bg-white/10"><i data-lucide="eraser" class="h-3.5 w-3.5"></i> Clear chat</button>
+        <button id="clearHistory" class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-red-300/60 px-2 py-1.5 text-red-500 hover:bg-red-500/10 dark:border-red-500/30"><i data-lucide="trash-2" class="h-3.5 w-3.5"></i> Clear all</button>
+      </div>
+    </div>
     <div class="border-t border-slate-200 p-3 text-[11px] text-slate-500 dark:border-white/10 space-y-1">
       <div class="flex items-center justify-between"><span>WebGPU</span><span id="gpuStat" class="font-mono">checking…</span></div>
       <div class="flex items-center justify-between"><span>JS heap</span><span id="ramStat" class="font-mono">—</span></div>
@@ -124,6 +157,13 @@
           <button id="sendBtn" class="rounded-xl bg-brand-500 p-2.5 text-white hover:bg-brand-600 disabled:opacity-40"><i data-lucide="arrow-up" class="h-4 w-4"></i></button>
         </div>
         <p class="mt-2 text-center text-[11px] text-slate-500">Everything runs locally in your browser. Nothing is uploaded.</p>
+        <p class="mt-1 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
+          <button data-info="about" class="hover:text-brand-500 hover:underline">About us</button>
+          <button data-info="help" class="hover:text-brand-500 hover:underline">Help</button>
+          <button data-info="readme" class="hover:text-brand-500 hover:underline">Read me</button>
+          <button data-info="license" class="hover:text-brand-500 hover:underline">License</button>
+          <span>© 2026 BroAI — All rights reserved.</span>
+        </p>
       </div>
     </footer>
   </div>
@@ -165,6 +205,20 @@ console.log('sum =', nums.reduce((a, b) => a + b, 0));</textarea>
 
   </aside>
   <div id="sandboxScrim" class="fixed inset-0 z-30 hidden bg-black/50"></div>
+</div>
+
+<!-- Info modal: About / Help / Readme / License -->
+<div id="infoModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/60 p-4">
+  <div class="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-white/10 dark:bg-[#0d121c]">
+    <div class="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-white/10">
+      <h2 id="infoTitle" class="text-sm font-semibold">About BroAI</h2>
+      <button id="closeInfo" class="rounded-lg p-1.5 hover:bg-slate-100 dark:hover:bg-white/10"><i data-lucide="x" class="h-4 w-4"></i></button>
+    </div>
+    <div id="infoBody" class="msg overflow-y-auto px-4 py-3 text-sm leading-relaxed"></div>
+    <div class="border-t border-slate-200 px-4 py-2.5 text-[11px] text-slate-500 dark:border-white/10">
+      © 2026 BroAI · MIT License · All rights reserved.
+    </div>
+  </div>
 </div>
 
 <div id="toasts" class="pointer-events-none fixed bottom-4 right-4 z-50 flex w-80 flex-col gap-2"></div>
@@ -344,20 +398,39 @@ function renderChat() {
   icons(); scrollToBottom(true);
 }
 
+/* ---------------- Preferences (streaming smoothness / motion) ---------------- */
+const PREFS_KEY = "broai.prefs.v1";
+const prefs = Object.assign({ smoothness: 45, reduceMotion: false }, (() => {
+  try { return JSON.parse(localStorage.getItem(PREFS_KEY) || "{}"); } catch { return {}; }
+})());
+function savePrefs() { try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch {} }
+function applyMotionPref() { document.documentElement.classList.toggle("reduce-motion", !!prefs.reduceMotion); }
+
 let autoStick = true;
+let programmaticScroll = false;
 $("#chatScroll").addEventListener("scroll", () => {
+  if (programmaticScroll) { programmaticScroll = false; return; }
   const s = $("#chatScroll");
-  autoStick = s.scrollHeight - s.scrollTop - s.clientHeight < 90;
-});
+  // Any real user scroll away from the bottom detaches the view and keeps it stable.
+  autoStick = s.scrollHeight - s.scrollTop - s.clientHeight < 64;
+}, { passive: true });
+
+// Stick to the bottom without animation while streaming: no jerky jumps, and
+// the position is only nudged when it actually drifted by a visible amount.
 function scrollStick() {
   if (!autoStick) return;
   const s = $("#chatScroll");
-  s.scrollTop = s.scrollHeight;
+  const target = s.scrollHeight - s.clientHeight;
+  if (target - s.scrollTop < 1) return;
+  programmaticScroll = true;
+  s.scrollTop = target;
 }
 function scrollToBottom(force) {
   if (!force && !autoStick) return;
   const s = $("#chatScroll");
-  s.scrollTo({ top: s.scrollHeight, behavior: force ? "auto" : "smooth" });
+  if (force) autoStick = true;
+  programmaticScroll = true;
+  s.scrollTop = s.scrollHeight - s.clientHeight;
 }
 
 /* ---------------- Engine ---------------- */
@@ -484,11 +557,10 @@ async function send() {
 
 /* ---- Smooth typewriter: decouples token bursts from painting ---- */
 function createTyper(bubble) {
-  let target = "", shown = 0, raf = 0, last = 0, done = null, finalText = null;
+  let target = "", shown = 0, raf = 0, last = 0, done = null, finalText = null, acc = 0;
   bubble.classList.add("cursor-blink");
 
   const paint = () => {
-    // Render markdown at most once per frame, plain-ish while streaming.
     renderMarkdown(bubble, target.slice(0, shown));
     bubble.classList.add("cursor-blink");
     scrollStick();
@@ -499,11 +571,19 @@ function createTyper(bubble) {
     last = now;
     const remaining = target.length - shown;
     if (remaining > 0) {
-      // Speed adapts to backlog so it never lags far behind, never machine-guns.
-      const cps = Math.max(45, Math.min(900, remaining * 12));
-      const advance = Math.max(1, Math.round((cps * dt) / 1000));
-      shown = Math.min(target.length, shown + advance);
-      paint();
+      // User-controlled smoothness: 0 = ultra smooth/slow, 100 = instant.
+      const s = prefs.smoothness / 100;
+      const base = 18 + s * s * 900;                 // chars/sec floor
+      const catchUp = remaining * (0.8 + s * 14);    // never lag far behind
+      let cps = Math.max(base, Math.min(1400, catchUp));
+      if (prefs.reduceMotion) cps = Math.min(cps, 90);
+      acc += (cps * dt) / 1000;
+      const advance = Math.floor(acc);
+      if (advance >= 1) {
+        acc -= advance;
+        shown = Math.min(target.length, shown + advance);
+        paint();
+      }
     }
     if (finalText !== null && shown >= target.length) {
       raf = 0;
@@ -515,7 +595,7 @@ function createTyper(bubble) {
     raf = requestAnimationFrame(step);
   };
 
-  const start = () => { if (!raf) { last = 0; raf = requestAnimationFrame(step); } };
+  const start = () => { if (!raf) { last = 0; acc = 0; raf = requestAnimationFrame(step); } };
   start();
 
   return {
@@ -527,7 +607,7 @@ function createTyper(bubble) {
       return new Promise((res) => {
         done = () => res();
         // Safety net in case rAF is throttled (background tab).
-        setTimeout(() => { if (raf) { cancelAnimationFrame(raf); raf = 0; renderMarkdown(bubble, text); res(); } }, 2500);
+        setTimeout(() => { if (raf) { cancelAnimationFrame(raf); raf = 0; renderMarkdown(bubble, text); res(); } }, 4000);
       });
     }
   };
@@ -726,6 +806,118 @@ $("#runCode").onclick = runSandbox;
 $("#killCode").onclick = () => { stopSandbox("⏹ stopped by user."); };
 $("#clearConsole").onclick = () => { $("#console").innerHTML = ""; consoleLines = 0; };
 
+/* ---- Streaming smoothness + reduce motion ---- */
+function smoothLabel(v) {
+  if (prefs.reduceMotion) return "reduced";
+  if (v >= 95) return "instant";
+  if (v >= 70) return "fast";
+  if (v >= 40) return "balanced";
+  if (v >= 15) return "smooth";
+  return "smoothest";
+}
+function syncPrefsUI() {
+  $("#smoothRange").value = prefs.smoothness;
+  $("#reduceMotion").checked = !!prefs.reduceMotion;
+  $("#smoothVal").textContent = smoothLabel(prefs.smoothness);
+  applyMotionPref();
+}
+$("#smoothRange").addEventListener("input", (e) => {
+  prefs.smoothness = Number(e.target.value);
+  $("#smoothVal").textContent = smoothLabel(prefs.smoothness);
+  savePrefs();
+});
+$("#reduceMotion").addEventListener("change", (e) => {
+  prefs.reduceMotion = e.target.checked;
+  savePrefs(); syncPrefsUI();
+  toast(prefs.reduceMotion ? "Reduced motion on — text streams slowly and steadily." : "Reduced motion off.", "info");
+});
+
+/* ---- Clear chat / clear history ---- */
+$("#clearChat").onclick = () => {
+  const chat = current();
+  if (!chat || !chat.messages.length) { toast("This chat is already empty.", "info"); return; }
+  if (!confirm("Clear all messages in this chat?")) return;
+  chat.messages = []; chat.title = "New chat"; chat.updated = Date.now();
+  saveStore(); renderHistory(); renderChat();
+  toast("Chat cleared.", "ok");
+};
+$("#clearHistory").onclick = () => {
+  if (!confirm("Delete every saved conversation? This cannot be undone.")) return;
+  chats = []; currentId = null;
+  try { localStorage.removeItem(STORE_KEY); } catch {}
+  newChat();
+  toast("All conversation history deleted.", "ok");
+};
+
+/* ---- About / Help / Readme / License ---- */
+const INFO = {
+  about: { title: "About BroAI", body: `
+## Private AI, on your machine
+**BroAI** runs open-weight language models **100% inside your browser** using **WebGPU**. Prompts, responses and model weights never leave your device — there is no server, no account and no tracking.
+
+- Weights are downloaded once from public model hubs and cached in your browser (IndexedDB).
+- Inference happens on your own GPU via \`@mlc-ai/web-llm\`.
+- Conversations are stored only in \`localStorage\` on this device.
+
+Built for people who want useful AI without handing their data to anyone.` },
+  help: { title: "Help & shortcuts", body: `
+## Getting started
+1. Pick a model from the header dropdown — the **Micro & Instant** group loads fastest.
+2. Press **Load**. The first load downloads the weights; later loads come from cache in seconds.
+3. Type a prompt and press **Enter**.
+
+## Tips
+- **Enter** sends, **Shift + Enter** adds a newline.
+- Use the **Stop** button to interrupt a running generation.
+- **Streaming smoothness** (sidebar) controls how fluidly words appear; **Reduce motion** batches updates into a slow, steady flow.
+- Scroll up during a response to freeze the reading position — scroll back to the bottom to resume auto-follow.
+- Code blocks have a **Run in Sandbox** button; the sandbox is time-limited, memory-capped and has no network access.
+
+## Troubleshooting
+- *WebGPU unavailable*: use Chrome/Edge 113+, or Safari 18+, on a GPU-capable device.
+- *Loading is slow*: you're downloading weights for the first time. Pick a smaller model or let the download finish once.` },
+  readme: { title: "Read me", body: `
+## BroAI — read me
+A single-page, dependency-light workspace for local LLM inference.
+
+**Stack:** WebGPU · @mlc-ai/web-llm · Tailwind CSS · marked · highlight.js · DOMPurify · Lucide.
+
+**Features**
+- Grouped model catalog with automatic fallback to available MLC builds.
+- Streaming chat with markdown, syntax highlighting and sanitized HTML output.
+- Conversation history with auto-titling, per-chat delete, clear chat and clear-all.
+- JavaScript sandbox running in an isolated Web Worker with time and memory limits.
+- Live WebGPU status, JS heap usage and tokens-per-second readout.
+
+**Requirements:** a WebGPU-capable browser and enough free VRAM for the chosen model.
+
+**Privacy:** no telemetry, no network calls other than fetching model weights and CDN assets.` },
+  license: { title: "License", body: `
+## MIT License
+Copyright © 2026 BroAI. **All rights reserved.**
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+Model weights are distributed under their own upstream licenses.` }
+};
+function openInfo(key) {
+  const info = INFO[key] || INFO.about;
+  $("#infoTitle").textContent = info.title;
+  renderMarkdown($("#infoBody"), info.body);
+  $("#infoModal").classList.remove("hidden");
+  $("#infoModal").classList.add("flex");
+  icons();
+}
+function closeInfo() { $("#infoModal").classList.add("hidden"); $("#infoModal").classList.remove("flex"); }
+document.querySelectorAll("[data-info]").forEach(b => { b.onclick = () => openInfo(b.dataset.info); });
+$("#closeInfo").onclick = closeInfo;
+$("#infoModal").addEventListener("click", (e) => { if (e.target === $("#infoModal")) closeInfo(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeInfo(); });
+
 $("#themeBtn").onclick = () => applyTheme(document.documentElement.classList.contains("dark") ? "light" : "dark");
 $("#input").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
@@ -734,6 +926,7 @@ $("#input").addEventListener("input", (e) => { e.target.style.height = "auto"; e
 
 /* ---------------- Boot ---------------- */
 applyTheme(localStorage.getItem("broai.theme") || "dark");
+syncPrefsUI();
 buildModelSelect();
 loadStore();
 if (!chats.length) newChat(); else { currentId = chats[0].id; renderHistory(); renderChat(); }
