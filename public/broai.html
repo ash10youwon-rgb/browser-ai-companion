@@ -806,6 +806,118 @@ $("#runCode").onclick = runSandbox;
 $("#killCode").onclick = () => { stopSandbox("⏹ stopped by user."); };
 $("#clearConsole").onclick = () => { $("#console").innerHTML = ""; consoleLines = 0; };
 
+/* ---- Streaming smoothness + reduce motion ---- */
+function smoothLabel(v) {
+  if (prefs.reduceMotion) return "reduced";
+  if (v >= 95) return "instant";
+  if (v >= 70) return "fast";
+  if (v >= 40) return "balanced";
+  if (v >= 15) return "smooth";
+  return "smoothest";
+}
+function syncPrefsUI() {
+  $("#smoothRange").value = prefs.smoothness;
+  $("#reduceMotion").checked = !!prefs.reduceMotion;
+  $("#smoothVal").textContent = smoothLabel(prefs.smoothness);
+  applyMotionPref();
+}
+$("#smoothRange").addEventListener("input", (e) => {
+  prefs.smoothness = Number(e.target.value);
+  $("#smoothVal").textContent = smoothLabel(prefs.smoothness);
+  savePrefs();
+});
+$("#reduceMotion").addEventListener("change", (e) => {
+  prefs.reduceMotion = e.target.checked;
+  savePrefs(); syncPrefsUI();
+  toast(prefs.reduceMotion ? "Reduced motion on — text streams slowly and steadily." : "Reduced motion off.", "info");
+});
+
+/* ---- Clear chat / clear history ---- */
+$("#clearChat").onclick = () => {
+  const chat = current();
+  if (!chat || !chat.messages.length) { toast("This chat is already empty.", "info"); return; }
+  if (!confirm("Clear all messages in this chat?")) return;
+  chat.messages = []; chat.title = "New chat"; chat.updated = Date.now();
+  saveStore(); renderHistory(); renderChat();
+  toast("Chat cleared.", "ok");
+};
+$("#clearHistory").onclick = () => {
+  if (!confirm("Delete every saved conversation? This cannot be undone.")) return;
+  chats = []; currentId = null;
+  try { localStorage.removeItem(STORE_KEY); } catch {}
+  newChat();
+  toast("All conversation history deleted.", "ok");
+};
+
+/* ---- About / Help / Readme / License ---- */
+const INFO = {
+  about: { title: "About BroAI", body: `
+## Private AI, on your machine
+**BroAI** runs open-weight language models **100% inside your browser** using **WebGPU**. Prompts, responses and model weights never leave your device — there is no server, no account and no tracking.
+
+- Weights are downloaded once from public model hubs and cached in your browser (IndexedDB).
+- Inference happens on your own GPU via \`@mlc-ai/web-llm\`.
+- Conversations are stored only in \`localStorage\` on this device.
+
+Built for people who want useful AI without handing their data to anyone.` },
+  help: { title: "Help & shortcuts", body: `
+## Getting started
+1. Pick a model from the header dropdown — the **Micro & Instant** group loads fastest.
+2. Press **Load**. The first load downloads the weights; later loads come from cache in seconds.
+3. Type a prompt and press **Enter**.
+
+## Tips
+- **Enter** sends, **Shift + Enter** adds a newline.
+- Use the **Stop** button to interrupt a running generation.
+- **Streaming smoothness** (sidebar) controls how fluidly words appear; **Reduce motion** batches updates into a slow, steady flow.
+- Scroll up during a response to freeze the reading position — scroll back to the bottom to resume auto-follow.
+- Code blocks have a **Run in Sandbox** button; the sandbox is time-limited, memory-capped and has no network access.
+
+## Troubleshooting
+- *WebGPU unavailable*: use Chrome/Edge 113+, or Safari 18+, on a GPU-capable device.
+- *Loading is slow*: you're downloading weights for the first time. Pick a smaller model or let the download finish once.` },
+  readme: { title: "Read me", body: `
+## BroAI — read me
+A single-page, dependency-light workspace for local LLM inference.
+
+**Stack:** WebGPU · @mlc-ai/web-llm · Tailwind CSS · marked · highlight.js · DOMPurify · Lucide.
+
+**Features**
+- Grouped model catalog with automatic fallback to available MLC builds.
+- Streaming chat with markdown, syntax highlighting and sanitized HTML output.
+- Conversation history with auto-titling, per-chat delete, clear chat and clear-all.
+- JavaScript sandbox running in an isolated Web Worker with time and memory limits.
+- Live WebGPU status, JS heap usage and tokens-per-second readout.
+
+**Requirements:** a WebGPU-capable browser and enough free VRAM for the chosen model.
+
+**Privacy:** no telemetry, no network calls other than fetching model weights and CDN assets.` },
+  license: { title: "License", body: `
+## MIT License
+Copyright © 2026 BroAI. **All rights reserved.**
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+Model weights are distributed under their own upstream licenses.` }
+};
+function openInfo(key) {
+  const info = INFO[key] || INFO.about;
+  $("#infoTitle").textContent = info.title;
+  renderMarkdown($("#infoBody"), info.body);
+  $("#infoModal").classList.remove("hidden");
+  $("#infoModal").classList.add("flex");
+  icons();
+}
+function closeInfo() { $("#infoModal").classList.add("hidden"); $("#infoModal").classList.remove("flex"); }
+document.querySelectorAll("[data-info]").forEach(b => { b.onclick = () => openInfo(b.dataset.info); });
+$("#closeInfo").onclick = closeInfo;
+$("#infoModal").addEventListener("click", (e) => { if (e.target === $("#infoModal")) closeInfo(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeInfo(); });
+
 $("#themeBtn").onclick = () => applyTheme(document.documentElement.classList.contains("dark") ? "light" : "dark");
 $("#input").addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
