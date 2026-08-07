@@ -359,20 +359,39 @@ function renderChat() {
   icons(); scrollToBottom(true);
 }
 
+/* ---------------- Preferences (streaming smoothness / motion) ---------------- */
+const PREFS_KEY = "broai.prefs.v1";
+const prefs = Object.assign({ smoothness: 45, reduceMotion: false }, (() => {
+  try { return JSON.parse(localStorage.getItem(PREFS_KEY) || "{}"); } catch { return {}; }
+})());
+function savePrefs() { try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch {} }
+function applyMotionPref() { document.documentElement.classList.toggle("reduce-motion", !!prefs.reduceMotion); }
+
 let autoStick = true;
+let programmaticScroll = false;
 $("#chatScroll").addEventListener("scroll", () => {
+  if (programmaticScroll) { programmaticScroll = false; return; }
   const s = $("#chatScroll");
-  autoStick = s.scrollHeight - s.scrollTop - s.clientHeight < 90;
-});
+  // Any real user scroll away from the bottom detaches the view and keeps it stable.
+  autoStick = s.scrollHeight - s.scrollTop - s.clientHeight < 64;
+}, { passive: true });
+
+// Stick to the bottom without animation while streaming: no jerky jumps, and
+// the position is only nudged when it actually drifted by a visible amount.
 function scrollStick() {
   if (!autoStick) return;
   const s = $("#chatScroll");
-  s.scrollTop = s.scrollHeight;
+  const target = s.scrollHeight - s.clientHeight;
+  if (target - s.scrollTop < 1) return;
+  programmaticScroll = true;
+  s.scrollTop = target;
 }
 function scrollToBottom(force) {
   if (!force && !autoStick) return;
   const s = $("#chatScroll");
-  s.scrollTo({ top: s.scrollHeight, behavior: force ? "auto" : "smooth" });
+  if (force) autoStick = true;
+  programmaticScroll = true;
+  s.scrollTop = s.scrollHeight - s.clientHeight;
 }
 
 /* ---------------- Engine ---------------- */
