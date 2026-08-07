@@ -349,6 +349,11 @@ $("#chatScroll").addEventListener("scroll", () => {
   const s = $("#chatScroll");
   autoStick = s.scrollHeight - s.scrollTop - s.clientHeight < 90;
 });
+function scrollStick() {
+  if (!autoStick) return;
+  const s = $("#chatScroll");
+  s.scrollTop = s.scrollHeight;
+}
 function scrollToBottom(force) {
   if (!force && !autoStick) return;
   const s = $("#chatScroll");
@@ -486,7 +491,7 @@ function createTyper(bubble) {
     // Render markdown at most once per frame, plain-ish while streaming.
     renderMarkdown(bubble, target.slice(0, shown));
     bubble.classList.add("cursor-blink");
-    scrollToBottom(false);
+    scrollStick();
   };
 
   const step = (now) => {
@@ -503,7 +508,7 @@ function createTyper(bubble) {
     if (finalText !== null && shown >= target.length) {
       raf = 0;
       renderMarkdown(bubble, finalText);
-      scrollToBottom(false);
+      scrollStick();
       done?.();
       return;
     }
