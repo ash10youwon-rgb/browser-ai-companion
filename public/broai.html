@@ -926,6 +926,7 @@ $("#input").addEventListener("input", (e) => { e.target.style.height = "auto"; e
 
 /* ---------------- Boot ---------------- */
 applyTheme(localStorage.getItem("broai.theme") || "dark");
+syncPrefsUI();
 buildModelSelect();
 loadStore();
 if (!chats.length) newChat(); else { currentId = chats[0].id; renderHistory(); renderChat(); }
