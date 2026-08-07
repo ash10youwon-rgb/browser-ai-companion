@@ -650,7 +650,7 @@ function buildModelSelect() {
     });
     sel.appendChild(og);
   });
-  sel.value = localStorage.getItem("broai.model") || "Qwen2.5-0.5B-Instruct-q4f16_1-MLC";
+  sel.value = localStorage.getItem("broai.model") || "SmolLM2-135M-Instruct-q0f16-MLC";
   if (!sel.value) sel.selectedIndex = 0;
   sel.onchange = () => { localStorage.setItem("broai.model", sel.value); $("#loadBtnText").textContent = "Load"; };
 }
