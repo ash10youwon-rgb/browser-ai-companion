@@ -56,6 +56,21 @@
   .code-bar button:hover { background:rgba(255,255,255,.15); }
   .cursor-blink::after { content:'▋'; margin-left:2px; animation: pulseline 1.1s infinite; }
   textarea { field-sizing: content; }
+  /* Text rendering tuned for fluid streaming */
+  body, .msg {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-synthesis: none;
+    font-variant-ligatures: none;
+    font-kerning: normal;
+  }
+  .msg { text-wrap: pretty; overflow-wrap: anywhere; backface-visibility: hidden; transform: translateZ(0); }
+  .msg pre code { text-rendering: optimizeSpeed; font-variant-ligatures: none; }
+  /* Keep the reading position stable: no browser scroll anchoring fights */
+  #chatScroll { overflow-anchor: none; scroll-behavior: auto; overscroll-behavior: contain; }
+  .reduce-motion * { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+  @media (prefers-reduced-motion: reduce) { * { animation-duration: .001ms !important; transition-duration: .001ms !important; } }
 </style>
 </head>
 <body class="bg-slate-50 text-slate-900 dark:bg-[#0b0f17] dark:text-slate-100 font-sans antialiased">
