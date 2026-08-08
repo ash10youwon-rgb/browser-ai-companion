@@ -551,18 +551,34 @@ async function loadModel() {
 async function send() {
   const input = $("#input");
   const text = input.value.trim();
-  if (!text || generating) return;
+  if (generating) return;
+  if (!text && !attachments.length) return;
   if (!engine) { toast("Load a model first (button in the header).", "warn"); return; }
   const chat = current() || (newChat(), current());
-  input.value = ""; input.style.height = "auto";
 
-  autoTitle(chat, text);
-  chat.messages.push({ role: "user", content: text });
+  // Attachments are processed locally: images are described by a local vision
+  // model, documents are read as text — nothing leaves the device.
+  let context = "";
+  if (attachments.length) {
+    try { context = await buildAttachmentContext(); }
+    catch (e) { toast("Could not read attachment: " + (e?.message || e), "error"); return; }
+  }
+  const shown = attachments.length
+    ? `${attachments.map(a => `📎 **${a.name}**`).join("  ")}\n\n${text}`.trim()
+    : text;
+  const payload = context ? `${context}\n\n${text || "Tell me about the attached content."}` : text;
+
+  input.value = ""; input.style.height = "auto";
+  clearAttachments();
+
+  autoTitle(chat, text || attachments[0]?.name || "Attachment");
+  chat.messages.push({ role: "user", content: payload, display: shown });
   chat.updated = Date.now(); saveStore(); renderHistory();
 
   const box = $("#chatInner");
   if (box.querySelector("h1")) box.innerHTML = "";
-  box.appendChild(messageNode("user", text).row);
+  box.appendChild(messageNode("user", shown).row);
+
   const { row, bubble } = messageNode("assistant", "");
   bubble.classList.add("cursor-blink");
   box.appendChild(row);
