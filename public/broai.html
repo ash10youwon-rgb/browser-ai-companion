@@ -69,7 +69,16 @@
   .msg pre code { text-rendering: optimizeSpeed; font-variant-ligatures: none; }
   /* Keep the reading position stable: no browser scroll anchoring fights */
   #chatScroll { overflow-anchor: none; scroll-behavior: auto; overscroll-behavior: contain; }
+  /* Native dropdowns: make the popup list readable in both themes */
+  html { color-scheme: light; }
+  html.dark { color-scheme: dark; }
+  select { color-scheme: inherit; }
+  html.dark select { background-color:#131a27; color:#e2e8f0; }
+  html.dark select option, html.dark select optgroup { background-color:#131a27; color:#e2e8f0; }
+  html:not(.dark) select option, html:not(.dark) select optgroup { background-color:#ffffff; color:#0f172a; }
+  select option:disabled { color:#94a3b8; }
   .reduce-motion * { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+
   @media (prefers-reduced-motion: reduce) { * { animation-duration: .001ms !important; transition-duration: .001ms !important; } }
 </style>
 </head>
