@@ -837,6 +837,113 @@ $("#newChat").onclick = newChat;
 $("#loadBtn").onclick = loadModel;
 $("#sendBtn").onclick = send;
 $("#stopBtn").onclick = () => { abortRequested = true; };
+
+/* ---------------- Image Lab (Transformers.js, fully client-side) ---------------- */
+const IMG_TASKS = {
+  bg:      { task: "background-removal", model: "briaai/RMBG-1.4",                        label: "Removing background" },
+  upscale: { task: "image-to-image",     model: "Xenova/swin2SR-classical-sr-x2-64",      label: "Upscaling 2×" },
+  depth:   { task: "depth-estimation",   model: "onnx-community/depth-anything-v2-small", label: "Estimating depth" },
+  caption: { task: "image-to-text",      model: "Xenova/vit-gpt2-image-captioning",       label: "Describing image" },
+};
+let tfjs = null;            // transformers.js module
+const imgPipes = new Map(); // key -> pipeline
+let imgBusy = false, imgSrcUrl = null;
+
+function openImagelab() {
+  $("#imagelab").classList.remove("translate-x-full");
+  $("#imagelabScrim").classList.remove("hidden");
+}
+function closeImagelab() {
+  $("#imagelab").classList.add("translate-x-full");
+  $("#imagelabScrim").classList.add("hidden");
+}
+function imgProgress(text, pct) {
+  const box = $("#imgProgress");
+  if (pct === null) { box.classList.add("hidden"); return; }
+  box.classList.remove("hidden");
+  $("#imgProgressText").textContent = text;
+  $("#imgProgressPct").textContent = Math.round(pct) + "%";
+  $("#imgProgressBar").style.width = Math.max(2, Math.min(100, pct)) + "%";
+}
+$("#imgFile").addEventListener("change", (e) => {
+  const file = e.target.files && e.target.files[0];
+  if (!file) return;
+  if (imgSrcUrl) URL.revokeObjectURL(imgSrcUrl);
+  imgSrcUrl = URL.createObjectURL(file);
+  const el = $("#imgIn");
+  el.src = imgSrcUrl; el.classList.remove("hidden");
+  $("#imgInEmpty").classList.add("hidden");
+});
+
+async function rawToUrl(raw) {
+  if (raw && typeof raw.toBlob === "function") return URL.createObjectURL(await raw.toBlob());
+  const cv = raw.toCanvas ? raw.toCanvas() : null;
+  if (cv) return cv.toDataURL("image/png");
+  throw new Error("Unsupported image output");
+}
+
+async function runImageTask() {
+  if (imgBusy) return;
+  const key = $("#imgTask").value;
+  const cfg = IMG_TASKS[key];
+  if (!imgSrcUrl) { toast("Choose a source image first.", "warn"); return; }
+  imgBusy = true;
+  $("#imgRun").disabled = true;
+  $("#imgOut").classList.add("hidden");
+  $("#imgText").classList.add("hidden");
+  $("#imgDownload").classList.add("hidden");
+  $("#imgOutEmpty").classList.remove("hidden");
+  try {
+    imgProgress("Loading Transformers.js…", 3);
+    if (!tfjs) {
+      tfjs = await import("https://esm.run/@huggingface/transformers");
+      tfjs.env.allowLocalModels = false;
+    }
+    let pipe = imgPipes.get(key);
+    if (!pipe) {
+      const device = (typeof navigator !== "undefined" && navigator.gpu) ? "webgpu" : "wasm";
+      pipe = await tfjs.pipeline(cfg.task, cfg.model, {
+        device,
+        progress_callback: (p) => {
+          if (p.status === "progress" && p.total) imgProgress(`Downloading ${p.file || "weights"}…`, (p.loaded / p.total) * 100);
+          else if (p.status === "ready") imgProgress("Model ready", 100);
+        },
+      });
+      imgPipes.set(key, pipe);
+    }
+    imgProgress(cfg.label + "…", 100);
+    const out = await pipe(imgSrcUrl);
+
+    if (key === "caption") {
+      const text = Array.isArray(out) ? (out[0]?.generated_text || "") : (out.generated_text || "");
+      const el = $("#imgText");
+      el.textContent = text || "No description produced.";
+      el.classList.remove("hidden");
+    } else {
+      const raw = key === "depth" ? out.depth : (Array.isArray(out) ? out[0] : out);
+      const url = await rawToUrl(raw);
+      const el = $("#imgOut");
+      el.src = url; el.classList.remove("hidden");
+      $("#imgOutEmpty").classList.add("hidden");
+      const dl = $("#imgDownload");
+      dl.href = url; dl.classList.remove("hidden");
+    }
+    imgProgress(null, null);
+    toast("Done — generated locally on your device.", "ok");
+  } catch (err) {
+    console.error(err);
+    imgProgress(null, null);
+    toast("Image task failed: " + (err?.message || err), "err");
+  } finally {
+    imgBusy = false;
+    $("#imgRun").disabled = false;
+    icons();
+  }
+}
+$("#imgRun").onclick = runImageTask;
+$("#closeImagelab").onclick = closeImagelab;
+$("#imagelabScrim").onclick = closeImagelab;
+
 $("#sandboxBtn").onclick = openSandbox;
 $("#imageBtn").onclick = openImagelab;
 $("#closeSandbox").onclick = closeSandboxPanel;
