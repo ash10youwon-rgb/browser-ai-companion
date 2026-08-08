@@ -933,7 +933,7 @@ async function runImageTask() {
   } catch (err) {
     console.error(err);
     imgProgress(null, null);
-    toast("Image task failed: " + (err?.message || err), "err");
+    toast("Image task failed: " + (err?.message || err), "error");
   } finally {
     imgBusy = false;
     $("#imgRun").disabled = false;
