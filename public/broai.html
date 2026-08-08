@@ -447,7 +447,7 @@ function renderChat() {
   const box = $("#chatInner"); box.innerHTML = "";
   const chat = current();
   if (!chat || !chat.messages.length) { box.appendChild(emptyState()); icons(); return; }
-  chat.messages.forEach(m => box.appendChild(messageNode(m.role, m.content).row));
+  chat.messages.forEach(m => box.appendChild(messageNode(m.role, m.display || m.content).row));
   icons(); scrollToBottom(true);
 }
 
