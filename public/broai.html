@@ -630,8 +630,8 @@ async function send() {
   if (!engine) { toast("Load a model first (button in the header).", "warn"); return; }
   const chat = current() || (newChat(), current());
 
-  // Attachments are processed locally: images are described by a local vision
-  // model, documents are read as text — nothing leaves the device.
+  // Attachments are read locally: text, code and PDF files are extracted in the
+
   let context = "";
   if (attachments.length) {
     try { context = await buildAttachmentContext(); }
