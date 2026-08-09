@@ -989,6 +989,40 @@ async function rawToUrl(raw) {
   throw new Error("Unsupported image output");
 }
 
+/* RMBG-1.4 is a custom architecture that has no pipeline mapping in Transformers.js,
+   so we run the model directly and composite the alpha mask ourselves. */
+let rmbg = null;
+async function removeBackgroundLocal(url, onProgress) {
+  if (!rmbg) {
+    const device = (typeof navigator !== "undefined" && navigator.gpu) ? "webgpu" : "wasm";
+    const opts = { device, dtype: "fp32", config: { model_type: "custom" }, progress_callback: onProgress };
+    const model = await tfjs.AutoModel.from_pretrained("briaai/RMBG-1.4", opts);
+    const processor = await tfjs.AutoProcessor.from_pretrained("briaai/RMBG-1.4", {
+      config: {
+        do_normalize: true, do_pad: false, do_rescale: true, do_resize: true,
+        image_mean: [0.5, 0.5, 0.5], image_std: [1, 1, 1],
+        feature_extractor_type: "ImageFeatureExtractor",
+        resample: 2, rescale_factor: 0.00392156862745098,
+        size: { width: 1024, height: 1024 },
+      },
+    });
+    rmbg = { model, processor };
+  }
+  const image = await tfjs.RawImage.fromURL(url);
+  const { pixel_values } = await rmbg.processor(image);
+  const { output } = await rmbg.model({ input: pixel_values });
+  const maskData = await tfjs.RawImage.fromTensor(output[0].mul(255).to("uint8")).resize(image.width, image.height);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = image.width; canvas.height = image.height;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(image.toCanvas(), 0, 0);
+  const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  for (let i = 0; i < maskData.data.length; ++i) pixels.data[4 * i + 3] = maskData.data[i];
+  ctx.putImageData(pixels, 0, 0);
+  return canvas.toDataURL("image/png");
+}
+
 async function runImageTask() {
   if (imgBusy) return;
   const key = $("#imgTask").value;
@@ -1006,20 +1040,33 @@ async function runImageTask() {
       tfjs = await import("https://esm.run/@huggingface/transformers");
       tfjs.env.allowLocalModels = false;
     }
+    const onProgress = (p) => {
+      if (p.status === "progress" && p.total) imgProgress(`Downloading ${p.file || "weights"}…`, (p.loaded / p.total) * 100);
+      else if (p.status === "ready") imgProgress("Model ready", 100);
+    };
+
+    if (key === "bg") {
+      imgProgress(cfg.label + "…", 100);
+      const url = await removeBackgroundLocal(imgSrcUrl, onProgress);
+      const el = $("#imgOut");
+      el.src = url; el.classList.remove("hidden");
+      $("#imgOutEmpty").classList.add("hidden");
+      const dl = $("#imgDownload");
+      dl.href = url; dl.classList.remove("hidden");
+      imgProgress(null, null);
+      toast("Done — generated locally on your device.", "ok");
+      return;
+    }
+
     let pipe = imgPipes.get(key);
     if (!pipe) {
       const device = (typeof navigator !== "undefined" && navigator.gpu) ? "webgpu" : "wasm";
-      pipe = await tfjs.pipeline(cfg.task, cfg.model, {
-        device,
-        progress_callback: (p) => {
-          if (p.status === "progress" && p.total) imgProgress(`Downloading ${p.file || "weights"}…`, (p.loaded / p.total) * 100);
-          else if (p.status === "ready") imgProgress("Model ready", 100);
-        },
-      });
+      pipe = await tfjs.pipeline(cfg.task, cfg.model, { device, progress_callback: onProgress });
       imgPipes.set(key, pipe);
     }
     imgProgress(cfg.label + "…", 100);
     const out = await pipe(imgSrcUrl);
+
 
     if (key === "caption") {
       const text = Array.isArray(out) ? (out[0]?.generated_text || "") : (out.generated_text || "");
