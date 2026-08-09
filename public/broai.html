@@ -670,7 +670,7 @@ async function send() {
     const stream = await engine.chat.completions.create({
       stream: true,
       temperature: 0.7,
-      max_tokens: 1536,
+      max_tokens: -1, // unlimited: generate until the model stops or the context window is full
       messages: [
         { role: "system", content: "You are BroAI, a helpful, concise assistant running fully offline in the user's browser. Use markdown and fenced code blocks with language tags." },
         ...chat.messages.map(m => ({ role: m.role, content: m.content }))
