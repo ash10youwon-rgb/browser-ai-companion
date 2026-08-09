@@ -631,6 +631,8 @@ async function send() {
   const chat = current() || (newChat(), current());
 
   // Attachments are read locally: text, code and PDF files are extracted in the
+  // browser — nothing leaves the device.
+
 
   let context = "";
   if (attachments.length) {
