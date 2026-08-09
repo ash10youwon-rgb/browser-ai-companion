@@ -163,10 +163,8 @@
       <div class="mx-auto max-w-3xl">
         <div id="attachRow" class="mb-2 hidden flex-wrap gap-2"></div>
         <div class="flex items-end gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm dark:border-white/10 dark:bg-white/5">
-          <input id="attachImage" type="file" accept="image/*" class="hidden" />
           <input id="attachFile" type="file" accept=".txt,.md,.csv,.json,.js,.ts,.py,.html,.css,.xml,.yml,.yaml,.log,.pdf,text/*" class="hidden" />
-          <button id="attachImageBtn" title="Attach an image" class="rounded-xl p-2.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10"><i data-lucide="image-plus" class="h-4 w-4"></i></button>
-          <button id="attachFileBtn" title="Attach a file" class="rounded-xl p-2.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10"><i data-lucide="paperclip" class="h-4 w-4"></i></button>
+          <button id="attachFileBtn" title="Attach a text, code or PDF file" class="rounded-xl p-2.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10"><i data-lucide="paperclip" class="h-4 w-4"></i></button>
           <textarea id="input" rows="1" placeholder="Ask BroAI anything… (runs on your GPU)" class="max-h-40 flex-1 resize-none bg-transparent px-2 py-2 text-sm outline-none placeholder:text-slate-400"></textarea>
           <button id="stopBtn" class="hidden rounded-xl bg-red-500/90 p-2.5 text-white hover:bg-red-500"><i data-lucide="square" class="h-4 w-4"></i></button>
           <button id="sendBtn" class="rounded-xl bg-brand-500 p-2.5 text-white hover:bg-brand-600 disabled:opacity-40"><i data-lucide="arrow-up" class="h-4 w-4"></i></button>
@@ -546,9 +544,11 @@ async function loadModel() {
     toast(`Failed to load model: ${String(e?.message || e).slice(0, 180)}`, "error");
   } finally { loading = false; $("#loadBtn").disabled = false; }
 }
-/* ---------------- Attachments: images + documents, 100% local ---------------- */
-let attachments = [];            // { kind:'image'|'doc', name, file, url?, text?, note? }
-const MAX_DOC_CHARS = 12000;
+/* ---------------- Attachments: documents only, 100% local ----------------
+   The local chat models are text-only (no vision), so image attachments were
+   removed. Text, code and PDF files are read in-browser and passed as context. */
+let attachments = [];            // { kind:'doc', name, file }
+const MAX_DOC_CHARS = 24000;
 
 function renderAttachments() {
   const row = $("#attachRow");
@@ -557,15 +557,9 @@ function renderAttachments() {
   attachments.forEach((a, i) => {
     const chip = document.createElement("div");
     chip.className = "flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-xs dark:border-white/10 dark:bg-white/5";
-    if (a.kind === "image") {
-      const img = document.createElement("img");
-      img.src = a.url; img.className = "h-8 w-8 rounded-lg object-cover";
-      chip.appendChild(img);
-    } else {
-      const ic = document.createElement("i");
-      ic.setAttribute("data-lucide", "file-text"); ic.className = "h-4 w-4 text-slate-500";
-      chip.appendChild(ic);
-    }
+    const ic = document.createElement("i");
+    ic.setAttribute("data-lucide", "file-text"); ic.className = "h-4 w-4 text-slate-500";
+    chip.appendChild(ic);
     const label = document.createElement("span");
     label.className = "max-w-[10rem] truncate";
     label.textContent = a.name;
@@ -573,7 +567,7 @@ function renderAttachments() {
     const x = document.createElement("button");
     x.className = "rounded-md p-0.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10";
     x.innerHTML = '<i data-lucide="x" class="h-3.5 w-3.5"></i>';
-    x.onclick = () => { if (a.url) URL.revokeObjectURL(a.url); attachments.splice(i, 1); renderAttachments(); };
+    x.onclick = () => { attachments.splice(i, 1); renderAttachments(); };
     chip.appendChild(x);
     row.appendChild(chip);
   });
@@ -581,17 +575,18 @@ function renderAttachments() {
 }
 
 function clearAttachments() {
-  attachments.forEach(a => a.url && URL.revokeObjectURL(a.url));
   attachments = [];
   renderAttachments();
 }
 
-function addAttachment(file, kind) {
+function addAttachment(file) {
   if (!file) return;
+  if (file.type.startsWith("image/")) {
+    toast("The local chat models are text-only — use the Image Lab for images.", "warn");
+    return;
+  }
   if (file.size > 25 * 1024 * 1024) { toast("File is larger than 25 MB — pick a smaller one.", "warn"); return; }
-  const a = { kind, name: file.name, file };
-  if (kind === "image") a.url = URL.createObjectURL(file);
-  attachments.push(a);
+  attachments.push({ kind: "doc", name: file.name, file });
   renderAttachments();
 }
 
@@ -603,7 +598,7 @@ async function readDocText(file) {
     const buf = await file.arrayBuffer();
     const doc = await pdfjs.getDocument({ data: buf }).promise;
     let out = "";
-    for (let p = 1; p <= Math.min(doc.numPages, 30) && out.length < MAX_DOC_CHARS; p++) {
+    for (let p = 1; p <= doc.numPages && out.length < MAX_DOC_CHARS; p++) {
       const page = await doc.getPage(p);
       const tc = await page.getTextContent();
       out += tc.items.map(i => i.str).join(" ") + "\n\n";
@@ -613,45 +608,18 @@ async function readDocText(file) {
   return await file.text();
 }
 
-async function describeImage(file) {
-  if (!tfjs) {
-    tfjs = await import("https://esm.run/@huggingface/transformers");
-    tfjs.env.allowLocalModels = false;
-  }
-  let pipe = imgPipes.get("caption");
-  if (!pipe) {
-    const device = (typeof navigator !== "undefined" && navigator.gpu) ? "webgpu" : "wasm";
-    pipe = await tfjs.pipeline(IMG_TASKS.caption.task, IMG_TASKS.caption.model, { device });
-    imgPipes.set("caption", pipe);
-  }
-  const url = URL.createObjectURL(file);
-  try {
-    const out = await pipe(url);
-    return (Array.isArray(out) ? out[0]?.generated_text : out?.generated_text) || "";
-  } finally { URL.revokeObjectURL(url); }
-}
-
 async function buildAttachmentContext() {
   const parts = [];
   for (const a of attachments) {
-    if (a.kind === "image") {
-      setProgress(true, `Describing ${a.name} locally…`, 0.3);
-      const desc = await describeImage(a.file);
-      setProgress(false);
-      parts.push(`[Attached image: ${a.name}]\nLocal vision model description: ${desc || "(no description produced)"}`);
-    } else {
-      const raw = (await readDocText(a.file)) || "";
-      const clipped = raw.length > MAX_DOC_CHARS ? raw.slice(0, MAX_DOC_CHARS) + "\n…(truncated)" : raw;
-      parts.push(`[Attached file: ${a.name}]\n"""\n${clipped.trim() || "(file appears empty or is not text)"}\n"""`);
-    }
+    const raw = (await readDocText(a.file)) || "";
+    const clipped = raw.length > MAX_DOC_CHARS ? raw.slice(0, MAX_DOC_CHARS) + "\n…(truncated)" : raw;
+    parts.push(`[Attached file: ${a.name}]\n"""\n${clipped.trim() || "(file appears empty or is not text)"}\n"""`);
   }
   return parts.join("\n\n");
 }
 
-$("#attachImageBtn").onclick = () => $("#attachImage").click();
 $("#attachFileBtn").onclick = () => $("#attachFile").click();
-$("#attachImage").addEventListener("change", e => { addAttachment(e.target.files?.[0], "image"); e.target.value = ""; });
-$("#attachFile").addEventListener("change", e => { addAttachment(e.target.files?.[0], "doc"); e.target.value = ""; });
+$("#attachFile").addEventListener("change", e => { addAttachment(e.target.files?.[0]); e.target.value = ""; });
 
 
 async function send() {
@@ -662,8 +630,10 @@ async function send() {
   if (!engine) { toast("Load a model first (button in the header).", "warn"); return; }
   const chat = current() || (newChat(), current());
 
-  // Attachments are processed locally: images are described by a local vision
-  // model, documents are read as text — nothing leaves the device.
+  // Attachments are read locally: text, code and PDF files are extracted in the
+  // browser — nothing leaves the device.
+
+
   let context = "";
   if (attachments.length) {
     try { context = await buildAttachmentContext(); }
@@ -700,7 +670,7 @@ async function send() {
     const stream = await engine.chat.completions.create({
       stream: true,
       temperature: 0.7,
-      max_tokens: 1536,
+      max_tokens: -1, // unlimited: generate until the model stops or the context window is full
       messages: [
         { role: "system", content: "You are BroAI, a helpful, concise assistant running fully offline in the user's browser. Use markdown and fenced code blocks with language tags." },
         ...chat.messages.map(m => ({ role: m.role, content: m.content }))
