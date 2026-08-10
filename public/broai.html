@@ -503,14 +503,41 @@ function setProgress(show, text, pct) {
   if (pct != null) { $("#progressBar").style.width = `${Math.round(pct * 100)}%`; $("#progressPct").textContent = `${Math.round(pct * 100)}%`; }
 }
 
+const IN_FRAME = (() => { try { return window.self !== window.top; } catch { return true; } })();
+
+async function requestAnyAdapter() {
+  const tries = [
+    undefined,
+    { powerPreference: "high-performance" },
+    { powerPreference: "low-power" },
+    { forceFallbackAdapter: true },
+  ];
+  for (const opts of tries) {
+    try {
+      const a = await navigator.gpu.requestAdapter(opts);
+      if (a) return a;
+    } catch { /* try next */ }
+  }
+  return null;
+}
+
 async function detectGPU() {
   if (!("gpu" in navigator)) { $("#gpuStat").textContent = "unavailable"; $("#gpuStat").className = "font-mono text-red-500"; toast("WebGPU is not available in this browser. Use Chrome/Edge 113+ or Safari 18+ on a GPU-capable device.", "error"); return false; }
   try {
-    const adapter = await navigator.gpu.requestAdapter();
-    if (!adapter) { $("#gpuStat").textContent = "no adapter"; $("#gpuStat").className = "font-mono text-amber-500"; toast("WebGPU exists but no GPU adapter was found. Model loading will fail.", "warn"); return false; }
-    $("#gpuStat").textContent = "accelerated"; $("#gpuStat").className = "font-mono text-emerald-500";
+    const adapter = await requestAnyAdapter();
+    if (!adapter) {
+      $("#gpuStat").textContent = "no adapter"; $("#gpuStat").className = "font-mono text-amber-500";
+      const hint = IN_FRAME
+        ? `No GPU adapter in this embedded preview. <a href="${location.href}" target="_blank" rel="noopener noreferrer" class="underline font-semibold">Open BroAI in a new tab</a> to use your GPU.`
+        : "No GPU adapter found. Enable hardware acceleration in your browser settings (chrome://settings/system), then reload.";
+      toast(hint, "warn", 12000);
+      return false;
+    }
+    let label = "accelerated";
+    try { const info = adapter.info || (adapter.requestAdapterInfo ? await adapter.requestAdapterInfo() : null); if (info && info.vendor) label = String(info.vendor).slice(0, 14) || label; } catch { /* ignore */ }
+    $("#gpuStat").textContent = label; $("#gpuStat").className = "font-mono text-emerald-500";
     return true;
-  } catch (e) { $("#gpuStat").textContent = "error"; $("#gpuStat").className = "font-mono text-red-500"; return false; }
+  } catch (e) { $("#gpuStat").textContent = "error"; $("#gpuStat").className = "font-mono text-red-500"; toast("WebGPU check failed: " + (e?.message || e), "error"); return false; }
 }
 
 async function loadModel() {
