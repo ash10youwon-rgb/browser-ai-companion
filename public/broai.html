@@ -1027,9 +1027,30 @@ async function rawToUrl(raw) {
   throw new Error("Unsupported image output");
 }
 
-/* Big photos blow past ONNX Runtime's tensor limits ("Tensor shape is too large"),
-   so every task gets a downscaled copy sized for what that model can actually handle. */
-const IMG_MAX_SIDE = { upscale: 512, depth: 768, bg: 1024, caption: 768 };
+/* Big photos blow past ONNX Runtime's tensor limits and can crash the GPU device
+   ("[Device] is lost"), so every task gets a downscaled copy plus an explicit
+   backend/precision plan. Attempts run in order until one succeeds. */
+const IMG_PLANS = {
+  // Swin2SR emits a 4x-sized feature map — WebGPU reliably loses the device on it, so CPU first.
+  upscale: [
+    { device: "wasm",   dtype: "fp32", maxSide: 384 },
+    { device: "wasm",   dtype: "fp32", maxSide: 256 },
+  ],
+  depth: [
+    { device: "webgpu", dtype: "fp32", maxSide: 504 },
+    { device: "wasm",   dtype: "fp32", maxSide: 392 },
+  ],
+  // q4 weights of vit-gpt2 are missing quant scales upstream → force q8 on CPU.
+  caption: [
+    { device: "wasm",   dtype: "q8",   maxSide: 384 },
+    { device: "wasm",   dtype: "fp32", maxSide: 384 },
+  ],
+  bg: [
+    { device: "webgpu", dtype: "fp32", maxSide: 1024 },
+    { device: "wasm",   dtype: "fp32", maxSide: 512 },
+  ],
+};
+const IMG_MAX_SIDE = { upscale: 384, depth: 504, bg: 1024, caption: 384 };
 function loadImageEl(url) {
   return new Promise((resolve, reject) => {
     const im = new Image();
@@ -1057,10 +1078,9 @@ async function prepareInput(url, maxSide) {
 
 /* RMBG-1.4 is a custom architecture that has no pipeline mapping in Transformers.js,
    so we run the model directly and composite the alpha mask ourselves. */
-let rmbg = null;
-async function removeBackgroundLocal(url, onProgress) {
-  if (!rmbg) {
-    const device = (typeof navigator !== "undefined" && navigator.gpu) ? "webgpu" : "wasm";
+let rmbg = null, rmbgDevice = null;
+async function removeBackgroundLocal(url, onProgress, device) {
+  if (!rmbg || rmbgDevice !== device) {
     const opts = { device, dtype: "fp32", config: { model_type: "custom" }, progress_callback: onProgress };
     const model = await tfjs.AutoModel.from_pretrained("briaai/RMBG-1.4", opts);
     const processor = await tfjs.AutoProcessor.from_pretrained("briaai/RMBG-1.4", {
@@ -1073,6 +1093,7 @@ async function removeBackgroundLocal(url, onProgress) {
       },
     });
     rmbg = { model, processor };
+    rmbgDevice = device;
   }
   const image = await tfjs.RawImage.fromURL(url);
   const { pixel_values } = await rmbg.processor(image);
@@ -1111,43 +1132,63 @@ async function runImageTask() {
       else if (p.status === "ready") imgProgress("Model ready", 100);
     };
 
-    const prepped = await prepareInput(imgSrcUrl, IMG_MAX_SIDE[key] || 768);
-    if (prepped.resized) imgProgress(`Resized to ${prepped.width}×${prepped.height} for this model…`, 100);
+    const hasGpu = typeof navigator !== "undefined" && !!navigator.gpu;
+    const plan = (IMG_PLANS[key] || [{ device: "wasm", dtype: "fp32", maxSide: 512 }])
+      .filter((a) => a.device !== "webgpu" || hasGpu);
+    const attempts = plan.length ? plan : [{ device: "wasm", dtype: "fp32", maxSide: 512 }];
+
+    const runAttempt = async (attempt, isRetry) => {
+      const prepped = await prepareInput(imgSrcUrl, attempt.maxSide);
+      imgProgress(
+        `${cfg.label} on ${attempt.device === "webgpu" ? "GPU" : "CPU"} at ${prepped.width}×${prepped.height}${isRetry ? " (retry)" : ""}…`,
+        100,
+      );
+      if (key === "bg") return await removeBackgroundLocal(prepped.url, onProgress, attempt.device);
+      const pipeKey = `${key}:${attempt.device}:${attempt.dtype}`;
+      let pipe = imgPipes.get(pipeKey);
+      if (!pipe) {
+        pipe = await tfjs.pipeline(cfg.task, cfg.model, {
+          device: attempt.device,
+          dtype: attempt.dtype,
+          progress_callback: onProgress,
+        });
+        imgPipes.set(pipeKey, pipe);
+      }
+      try {
+        return await pipe(prepped.url);
+      } catch (err) {
+        // A lost GPU device / broken session leaves the pipeline unusable — drop it.
+        imgPipes.delete(pipeKey);
+        if (key === "bg") { rmbg = null; rmbgDevice = null; }
+        throw err;
+      }
+    };
+
+    let out, lastErr = null;
+    for (let i = 0; i < attempts.length; i++) {
+      try {
+        out = await runAttempt(attempts[i], i > 0);
+        lastErr = null;
+        break;
+      } catch (err) {
+        lastErr = err;
+        console.warn(`Image task attempt ${i + 1} failed:`, err);
+        if (i < attempts.length - 1) imgProgress("Falling back to a safer backend…", 100);
+      }
+    }
+    if (lastErr) throw lastErr;
 
     if (key === "bg") {
-      imgProgress(cfg.label + "…", 100);
-      const url = await removeBackgroundLocal(prepped.url, onProgress);
       const el = $("#imgOut");
-      el.src = url; el.classList.remove("hidden");
+      el.src = out; el.classList.remove("hidden");
       $("#imgOutEmpty").classList.add("hidden");
       const dl = $("#imgDownload");
-      dl.href = url; dl.classList.remove("hidden");
+      dl.href = out; dl.classList.remove("hidden");
       imgProgress(null, null);
       toast("Done — generated locally on your device.", "ok");
       return;
     }
 
-    const getPipe = async (device) => {
-      let pipe = imgPipes.get(key);
-      if (!pipe) {
-        pipe = await tfjs.pipeline(cfg.task, cfg.model, { device, progress_callback: onProgress });
-        imgPipes.set(key, pipe);
-      }
-      return pipe;
-    };
-    const hasGpu = typeof navigator !== "undefined" && !!navigator.gpu;
-    let out;
-    try {
-      out = await (await getPipe(hasGpu ? "webgpu" : "wasm"))(prepped.url);
-    } catch (gpuErr) {
-      if (!hasGpu) throw gpuErr;
-      // WebGPU backends can hit shader/tensor limits on some drivers — retry on CPU.
-      console.warn("WebGPU run failed, retrying on CPU:", gpuErr);
-      imgPipes.delete(key);
-      imgProgress("Retrying on CPU…", 100);
-      const smaller = await prepareInput(imgSrcUrl, Math.round((IMG_MAX_SIDE[key] || 768) * 0.75));
-      out = await (await getPipe("wasm"))(smaller.url);
-    }
 
 
 
