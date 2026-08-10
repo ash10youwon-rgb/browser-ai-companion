@@ -342,9 +342,19 @@ marked.setOptions({
   }
 });
 
+if (typeof DOMPurify !== "undefined" && !DOMPurify.__broaiLinkHook) {
+  DOMPurify.addHook("afterSanitizeAttributes", (node) => {
+    if (node.tagName === "A") {
+      node.setAttribute("target", "_blank");
+      node.setAttribute("rel", "noopener noreferrer");
+    }
+  });
+  DOMPurify.__broaiLinkHook = true;
+}
+
 function renderMarkdown(container, text) {
   const raw = marked.parse(text || "");
-  container.innerHTML = DOMPurify.sanitize(raw, { ADD_ATTR: ["target"] });
+  container.innerHTML = DOMPurify.sanitize(raw, { ADD_ATTR: ["target", "rel"] });
   container.querySelectorAll("pre > code").forEach((code) => {
     const pre = code.parentElement;
     if (pre.parentElement?.classList.contains("code-wrap")) return;
