@@ -1078,10 +1078,9 @@ async function prepareInput(url, maxSide) {
 
 /* RMBG-1.4 is a custom architecture that has no pipeline mapping in Transformers.js,
    so we run the model directly and composite the alpha mask ourselves. */
-let rmbg = null;
-async function removeBackgroundLocal(url, onProgress) {
-  if (!rmbg) {
-    const device = (typeof navigator !== "undefined" && navigator.gpu) ? "webgpu" : "wasm";
+let rmbg = null, rmbgDevice = null;
+async function removeBackgroundLocal(url, onProgress, device) {
+  if (!rmbg || rmbgDevice !== device) {
     const opts = { device, dtype: "fp32", config: { model_type: "custom" }, progress_callback: onProgress };
     const model = await tfjs.AutoModel.from_pretrained("briaai/RMBG-1.4", opts);
     const processor = await tfjs.AutoProcessor.from_pretrained("briaai/RMBG-1.4", {
@@ -1094,6 +1093,7 @@ async function removeBackgroundLocal(url, onProgress) {
       },
     });
     rmbg = { model, processor };
+    rmbgDevice = device;
   }
   const image = await tfjs.RawImage.fromURL(url);
   const { pixel_values } = await rmbg.processor(image);
