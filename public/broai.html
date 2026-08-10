@@ -989,6 +989,34 @@ async function rawToUrl(raw) {
   throw new Error("Unsupported image output");
 }
 
+/* Big photos blow past ONNX Runtime's tensor limits ("Tensor shape is too large"),
+   so every task gets a downscaled copy sized for what that model can actually handle. */
+const IMG_MAX_SIDE = { upscale: 512, depth: 768, bg: 1024, caption: 768 };
+function loadImageEl(url) {
+  return new Promise((resolve, reject) => {
+    const im = new Image();
+    im.crossOrigin = "anonymous";
+    im.onload = () => resolve(im);
+    im.onerror = () => reject(new Error("Could not read that image."));
+    im.src = url;
+  });
+}
+async function prepareInput(url, maxSide) {
+  const im = await loadImageEl(url);
+  const w = im.naturalWidth || im.width, h = im.naturalHeight || im.height;
+  const scale = Math.min(1, maxSide / Math.max(w, h));
+  if (scale >= 1) return { url, resized: false, width: w, height: h };
+  const cv = document.createElement("canvas");
+  cv.width = Math.max(1, Math.round(w * scale));
+  cv.height = Math.max(1, Math.round(h * scale));
+  const ctx = cv.getContext("2d");
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(im, 0, 0, cv.width, cv.height);
+  return { url: cv.toDataURL("image/png"), resized: true, width: cv.width, height: cv.height };
+}
+
+
 /* RMBG-1.4 is a custom architecture that has no pipeline mapping in Transformers.js,
    so we run the model directly and composite the alpha mask ourselves. */
 let rmbg = null;
@@ -1045,9 +1073,12 @@ async function runImageTask() {
       else if (p.status === "ready") imgProgress("Model ready", 100);
     };
 
+    const prepped = await prepareInput(imgSrcUrl, IMG_MAX_SIDE[key] || 768);
+    if (prepped.resized) imgProgress(`Resized to ${prepped.width}×${prepped.height} for this model…`, 100);
+
     if (key === "bg") {
       imgProgress(cfg.label + "…", 100);
-      const url = await removeBackgroundLocal(imgSrcUrl, onProgress);
+      const url = await removeBackgroundLocal(prepped.url, onProgress);
       const el = $("#imgOut");
       el.src = url; el.classList.remove("hidden");
       $("#imgOutEmpty").classList.add("hidden");
@@ -1058,14 +1089,28 @@ async function runImageTask() {
       return;
     }
 
-    let pipe = imgPipes.get(key);
-    if (!pipe) {
-      const device = (typeof navigator !== "undefined" && navigator.gpu) ? "webgpu" : "wasm";
-      pipe = await tfjs.pipeline(cfg.task, cfg.model, { device, progress_callback: onProgress });
-      imgPipes.set(key, pipe);
+    const getPipe = async (device) => {
+      let pipe = imgPipes.get(key);
+      if (!pipe) {
+        pipe = await tfjs.pipeline(cfg.task, cfg.model, { device, progress_callback: onProgress });
+        imgPipes.set(key, pipe);
+      }
+      return pipe;
+    };
+    const hasGpu = typeof navigator !== "undefined" && !!navigator.gpu;
+    let out;
+    try {
+      out = await (await getPipe(hasGpu ? "webgpu" : "wasm"))(prepped.url);
+    } catch (gpuErr) {
+      if (!hasGpu) throw gpuErr;
+      // WebGPU backends can hit shader/tensor limits on some drivers — retry on CPU.
+      console.warn("WebGPU run failed, retrying on CPU:", gpuErr);
+      imgPipes.delete(key);
+      imgProgress("Retrying on CPU…", 100);
+      const smaller = await prepareInput(imgSrcUrl, Math.round((IMG_MAX_SIDE[key] || 768) * 0.75));
+      out = await (await getPipe("wasm"))(smaller.url);
     }
-    imgProgress(cfg.label + "…", 100);
-    const out = await pipe(imgSrcUrl);
+
 
 
     if (key === "caption") {
