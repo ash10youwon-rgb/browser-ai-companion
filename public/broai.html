@@ -323,11 +323,11 @@ const $ = (s) => document.querySelector(s);
 const el = (tag, cls, html) => { const n = document.createElement(tag); if (cls) n.className = cls; if (html != null) n.innerHTML = html; return n; };
 const icons = () => window.lucide?.createIcons();
 
-function toast(msg, type = "info") {
+function toast(msg, type = "info", duration = 4200) {
   const colors = { info: "bg-slate-900 dark:bg-white dark:text-slate-900 text-white", error: "bg-red-600 text-white", warn: "bg-amber-500 text-white", ok: "bg-emerald-600 text-white" };
-  const t = el("div", `pointer-events-auto animate-fadeup rounded-xl px-4 py-3 text-sm shadow-lg ${colors[type] || colors.info}`, DOMPurify.sanitize(msg));
+  const t = el("div", `pointer-events-auto animate-fadeup rounded-xl px-4 py-3 text-sm shadow-lg ${colors[type] || colors.info}`, DOMPurify.sanitize(msg, { ADD_ATTR: ["target", "rel"] }));
   $("#toasts").appendChild(t);
-  setTimeout(() => { t.style.opacity = "0"; t.style.transition = "opacity .3s"; setTimeout(() => t.remove(), 320); }, 4200);
+  setTimeout(() => { t.style.opacity = "0"; t.style.transition = "opacity .3s"; setTimeout(() => t.remove(), 320); }, duration);
 }
 
 /* ---------------- Markdown rendering ---------------- */
