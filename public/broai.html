@@ -804,6 +804,34 @@ function logLine(kind, args) {
 /* Worker source: user code never touches the main thread, so a runaway
    loop can be terminated instead of freezing the tab. */
 const WORKER_SRC = `
+'use strict';
+/* Defense in depth: the real network APIs are removed from the worker global
+   itself, so recovering the global (Function('return this')(), indirect eval,
+   self, etc.) cannot get them back. */
+const RealFunction = Function;
+const realPost = self.postMessage.bind(self);
+const denied = (name) => { throw new Error(name + ' is disabled inside the BroAI sandbox'); };
+const neuter = (name) => {
+  const stub = function () { denied(name); };
+  try {
+    Object.defineProperty(globalThis, name, { configurable: true, writable: true, value: stub });
+  } catch (_) { /* ignore */ }
+  try {
+    const proto = Object.getPrototypeOf(globalThis);
+    if (proto && name in proto) Object.defineProperty(proto, name, { configurable: true, writable: true, value: stub });
+  } catch (_) { /* ignore */ }
+};
+[
+  'fetch', 'XMLHttpRequest', 'WebSocket', 'importScripts', 'EventSource',
+  'Worker', 'SharedWorker', 'WebTransport', 'RTCPeerConnection', 'postMessage',
+  'Request', 'Response', 'BroadcastChannel', 'open'
+].forEach(neuter);
+try { if (globalThis.navigator) globalThis.navigator.sendBeacon = () => denied('navigator.sendBeacon'); } catch (_) {}
+// Block recovery of the true global through the Function constructor.
+const BlockedFunction = function () { denied('The Function constructor'); };
+try { Object.defineProperty(globalThis, 'Function', { configurable: true, writable: true, value: BlockedFunction }); } catch (_) {}
+try { Object.defineProperty(RealFunction.prototype, 'constructor', { configurable: true, writable: true, value: BlockedFunction }); } catch (_) {}
+
 self.onmessage = async (e) => {
   const { code, maxMessages } = e.data;
   let sent = 0;
@@ -812,7 +840,7 @@ self.onmessage = async (e) => {
     let safe;
     try { safe = args.map(a => (typeof a === 'string' ? a : JSON.parse(JSON.stringify(a, (k, v) => typeof v === 'bigint' ? String(v) : v)))); }
     catch { safe = args.map(a => String(a)); }
-    self.postMessage({ kind, args: safe });
+    realPost({ kind, args: safe });
   };
   const sandboxConsole = {
     log: (...a) => post('log', a),
@@ -822,9 +850,9 @@ self.onmessage = async (e) => {
     warn: (...a) => post('warn', a),
     error: (...a) => post('error', a)
   };
-  const blocked = (name) => () => { throw new Error(name + ' is disabled inside the BroAI sandbox'); };
+  const blocked = (name) => () => denied(name);
   try {
-    const fn = new Function(
+    const fn = new RealFunction(
       'console', 'fetch', 'XMLHttpRequest', 'importScripts', 'WebSocket', 'self', 'postMessage', 'globalThis',
       '"use strict";\\nreturn (async () => {\\n' + code + '\\n})();'
     );
@@ -833,10 +861,10 @@ self.onmessage = async (e) => {
       undefined, blocked('postMessage'), undefined
     );
     if (value !== undefined) post('result', [value]);
-    self.postMessage({ kind: '__done' });
+    realPost({ kind: '__done' });
   } catch (err) {
     post('error', [(err && err.stack) || String(err)]);
-    self.postMessage({ kind: '__done' });
+    realPost({ kind: '__done' });
   }
 };
 `;
