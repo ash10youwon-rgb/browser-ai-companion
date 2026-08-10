@@ -1073,9 +1073,12 @@ async function runImageTask() {
       else if (p.status === "ready") imgProgress("Model ready", 100);
     };
 
+    const prepped = await prepareInput(imgSrcUrl, IMG_MAX_SIDE[key] || 768);
+    if (prepped.resized) imgProgress(`Resized to ${prepped.width}×${prepped.height} for this model…`, 100);
+
     if (key === "bg") {
       imgProgress(cfg.label + "…", 100);
-      const url = await removeBackgroundLocal(imgSrcUrl, onProgress);
+      const url = await removeBackgroundLocal(prepped.url, onProgress);
       const el = $("#imgOut");
       el.src = url; el.classList.remove("hidden");
       $("#imgOutEmpty").classList.add("hidden");
@@ -1086,14 +1089,28 @@ async function runImageTask() {
       return;
     }
 
-    let pipe = imgPipes.get(key);
-    if (!pipe) {
-      const device = (typeof navigator !== "undefined" && navigator.gpu) ? "webgpu" : "wasm";
-      pipe = await tfjs.pipeline(cfg.task, cfg.model, { device, progress_callback: onProgress });
-      imgPipes.set(key, pipe);
+    const getPipe = async (device) => {
+      let pipe = imgPipes.get(key);
+      if (!pipe) {
+        pipe = await tfjs.pipeline(cfg.task, cfg.model, { device, progress_callback: onProgress });
+        imgPipes.set(key, pipe);
+      }
+      return pipe;
+    };
+    const hasGpu = typeof navigator !== "undefined" && !!navigator.gpu;
+    let out;
+    try {
+      out = await (await getPipe(hasGpu ? "webgpu" : "wasm"))(prepped.url);
+    } catch (gpuErr) {
+      if (!hasGpu) throw gpuErr;
+      // WebGPU backends can hit shader/tensor limits on some drivers — retry on CPU.
+      console.warn("WebGPU run failed, retrying on CPU:", gpuErr);
+      imgPipes.delete(key);
+      imgProgress("Retrying on CPU…", 100);
+      const smaller = await prepareInput(imgSrcUrl, Math.round((IMG_MAX_SIDE[key] || 768) * 0.75));
+      out = await (await getPipe("wasm"))(smaller.url);
     }
-    imgProgress(cfg.label + "…", 100);
-    const out = await pipe(imgSrcUrl);
+
 
 
     if (key === "caption") {
