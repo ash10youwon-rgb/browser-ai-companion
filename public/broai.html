@@ -1027,9 +1027,30 @@ async function rawToUrl(raw) {
   throw new Error("Unsupported image output");
 }
 
-/* Big photos blow past ONNX Runtime's tensor limits ("Tensor shape is too large"),
-   so every task gets a downscaled copy sized for what that model can actually handle. */
-const IMG_MAX_SIDE = { upscale: 512, depth: 768, bg: 1024, caption: 768 };
+/* Big photos blow past ONNX Runtime's tensor limits and can crash the GPU device
+   ("[Device] is lost"), so every task gets a downscaled copy plus an explicit
+   backend/precision plan. Attempts run in order until one succeeds. */
+const IMG_PLANS = {
+  // Swin2SR emits a 4x-sized feature map — WebGPU reliably loses the device on it, so CPU first.
+  upscale: [
+    { device: "wasm",   dtype: "fp32", maxSide: 384 },
+    { device: "wasm",   dtype: "fp32", maxSide: 256 },
+  ],
+  depth: [
+    { device: "webgpu", dtype: "fp32", maxSide: 504 },
+    { device: "wasm",   dtype: "fp32", maxSide: 392 },
+  ],
+  // q4 weights of vit-gpt2 are missing quant scales upstream → force q8 on CPU.
+  caption: [
+    { device: "wasm",   dtype: "q8",   maxSide: 384 },
+    { device: "wasm",   dtype: "fp32", maxSide: 384 },
+  ],
+  bg: [
+    { device: "webgpu", dtype: "fp32", maxSide: 1024 },
+    { device: "wasm",   dtype: "fp32", maxSide: 512 },
+  ],
+};
+const IMG_MAX_SIDE = { upscale: 384, depth: 504, bg: 1024, caption: 384 };
 function loadImageEl(url) {
   return new Promise((resolve, reject) => {
     const im = new Image();
