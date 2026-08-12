@@ -69,16 +69,7 @@
   .msg pre code { text-rendering: optimizeSpeed; font-variant-ligatures: none; }
   /* Keep the reading position stable: no browser scroll anchoring fights */
   #chatScroll { overflow-anchor: none; scroll-behavior: auto; overscroll-behavior: contain; }
-  /* Native dropdowns: make the popup list readable in both themes */
-  html { color-scheme: light; }
-  html.dark { color-scheme: dark; }
-  select { color-scheme: inherit; }
-  html.dark select { background-color:#131a27; color:#e2e8f0; }
-  html.dark select option, html.dark select optgroup { background-color:#131a27; color:#e2e8f0; }
-  html:not(.dark) select option, html:not(.dark) select optgroup { background-color:#ffffff; color:#0f172a; }
-  select option:disabled { color:#94a3b8; }
   .reduce-motion * { animation-duration: .001ms !important; transition-duration: .001ms !important; }
-
   @media (prefers-reduced-motion: reduce) { * { animation-duration: .001ms !important; transition-duration: .001ms !important; } }
 </style>
 </head>
@@ -141,7 +132,6 @@
           <i data-lucide="cpu" class="h-4 w-4"></i><span id="loadBtnText">Load</span>
         </button>
       </div>
-      <button id="imageBtn" title="Image Lab (local Transformers.js)" class="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-white/10"><i data-lucide="image" class="h-5 w-5"></i></button>
       <button id="sandboxBtn" title="JavaScript sandbox" class="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-white/10"><i data-lucide="terminal" class="h-5 w-5"></i></button>
       <button id="themeBtn" title="Toggle theme" class="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-white/10"><i data-lucide="sun-moon" class="h-5 w-5"></i></button>
     </header>
@@ -161,22 +151,18 @@
 
     <footer class="shrink-0 border-t border-slate-200 bg-white/80 p-3 backdrop-blur dark:border-white/10 dark:bg-[#0b0f17]/80">
       <div class="mx-auto max-w-3xl">
-        <div id="attachRow" class="mb-2 hidden flex-wrap gap-2"></div>
         <div class="flex items-end gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm dark:border-white/10 dark:bg-white/5">
-          <input id="attachFile" type="file" accept=".txt,.md,.csv,.json,.js,.ts,.py,.html,.css,.xml,.yml,.yaml,.log,.pdf,text/*" class="hidden" />
-          <button id="attachFileBtn" title="Attach a text, code or PDF file" class="rounded-xl p-2.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10"><i data-lucide="paperclip" class="h-4 w-4"></i></button>
           <textarea id="input" rows="1" placeholder="Ask BroAI anything… (runs on your GPU)" class="max-h-40 flex-1 resize-none bg-transparent px-2 py-2 text-sm outline-none placeholder:text-slate-400"></textarea>
           <button id="stopBtn" class="hidden rounded-xl bg-red-500/90 p-2.5 text-white hover:bg-red-500"><i data-lucide="square" class="h-4 w-4"></i></button>
           <button id="sendBtn" class="rounded-xl bg-brand-500 p-2.5 text-white hover:bg-brand-600 disabled:opacity-40"><i data-lucide="arrow-up" class="h-4 w-4"></i></button>
         </div>
-
         <p class="mt-2 text-center text-[11px] text-slate-500">Everything runs locally in your browser. Nothing is uploaded.</p>
         <p class="mt-1 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
           <button data-info="about" class="hover:text-brand-500 hover:underline">About us</button>
           <button data-info="help" class="hover:text-brand-500 hover:underline">Help</button>
           <button data-info="readme" class="hover:text-brand-500 hover:underline">Read me</button>
           <button data-info="license" class="hover:text-brand-500 hover:underline">License</button>
-          <span>© 2026 Chaitanya Lalit Patil — All rights reserved.</span>
+          <span>© 2026 BroAI — All rights reserved.</span>
         </p>
       </div>
     </footer>
@@ -219,44 +205,7 @@ console.log('sum =', nums.reduce((a, b) => a + b, 0));</textarea>
 
   </aside>
   <div id="sandboxScrim" class="fixed inset-0 z-30 hidden bg-black/50"></div>
-
-  <!-- Image lab drawer (Transformers.js, fully local) -->
-  <aside id="imagelab" class="fixed inset-y-0 right-0 z-40 flex w-full max-w-md translate-x-full flex-col border-l border-slate-200 bg-white transition-transform duration-300 dark:border-white/10 dark:bg-[#0d121c]">
-    <div class="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 px-4 dark:border-white/10">
-      <div class="flex items-center gap-2 text-sm font-semibold"><i data-lucide="image" class="h-4 w-4"></i> Image Lab</div>
-      <button id="closeImagelab" class="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-white/10"><i data-lucide="x" class="h-4 w-4"></i></button>
-    </div>
-    <div class="flex-1 overflow-y-auto p-4 space-y-3 text-sm">
-      <p class="text-[11px] leading-relaxed text-slate-500">Runs <span class="font-medium">Transformers.js</span> on WebGPU, 100% in your browser. No server, no upload — models are cached in IndexedDB after the first run.</p>
-      <label class="block space-y-1">
-        <span class="text-xs font-medium text-slate-600 dark:text-slate-300">Task</span>
-        <select id="imgTask" class="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs dark:border-white/10 dark:bg-white/5">
-          <option value="bg">Remove background (RMBG-1.4)</option>
-          <option value="upscale">Upscale 2× (Swin2SR)</option>
-          <option value="depth">Depth map (Depth Anything V2)</option>
-          <option value="caption">Describe image (ViT-GPT2)</option>
-        </select>
-      </label>
-      <label class="block space-y-1">
-        <span class="text-xs font-medium text-slate-600 dark:text-slate-300">Source image</span>
-        <input id="imgFile" type="file" accept="image/*" class="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs file:mr-2 file:rounded-md file:border-0 file:bg-brand-500 file:px-2 file:py-1 file:text-white dark:border-white/10 dark:bg-white/5" />
-      </label>
-      <button id="imgRun" class="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand-500 px-3 py-2 text-xs font-medium text-white hover:bg-brand-600 disabled:opacity-50"><i data-lucide="sparkles" class="h-4 w-4"></i> Generate</button>
-      <div id="imgProgress" class="hidden">
-        <div class="flex items-center justify-between text-[11px] font-medium text-brand-600 dark:text-brand-300"><span id="imgProgressText">Preparing…</span><span id="imgProgressPct" class="font-mono">0%</span></div>
-        <div class="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-brand-200/70 dark:bg-white/10"><div id="imgProgressBar" class="h-full w-0 rounded-full bg-brand-500 transition-all duration-200"></div></div>
-      </div>
-      <div class="grid grid-cols-2 gap-2">
-        <div class="space-y-1"><div class="text-[10px] uppercase tracking-wider text-slate-500">Input</div><div class="grid aspect-square place-items-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5"><img id="imgIn" alt="Selected source image" class="hidden max-h-full max-w-full object-contain" /><span id="imgInEmpty" class="text-[11px] text-slate-400">No image</span></div></div>
-        <div class="space-y-1"><div class="text-[10px] uppercase tracking-wider text-slate-500">Output</div><div class="grid aspect-square place-items-center overflow-hidden rounded-lg border border-slate-200 bg-[url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2216%22 height=%2216%22><rect width=%228%22 height=%228%22 fill=%22%23e2e8f0%22/><rect x=%228%22 y=%228%22 width=%228%22 height=%228%22 fill=%22%23e2e8f0%22/></svg>')] dark:border-white/10"><img id="imgOut" alt="Generated result" class="hidden max-h-full max-w-full object-contain" /><span id="imgOutEmpty" class="text-[11px] text-slate-400">No result</span></div></div>
-      </div>
-      <p id="imgText" class="hidden rounded-lg bg-slate-100 p-2 text-xs dark:bg-white/5"></p>
-      <a id="imgDownload" class="hidden inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs hover:bg-slate-100 dark:border-white/10 dark:hover:bg-white/10" download="broai-image.png"><i data-lucide="download" class="h-3.5 w-3.5"></i> Download result</a>
-    </div>
-  </aside>
-  <div id="imagelabScrim" class="fixed inset-0 z-30 hidden bg-black/50"></div>
 </div>
-
 
 <!-- Info modal: About / Help / Readme / License -->
 <div id="infoModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/60 p-4">
@@ -267,7 +216,7 @@ console.log('sum =', nums.reduce((a, b) => a + b, 0));</textarea>
     </div>
     <div id="infoBody" class="msg overflow-y-auto px-4 py-3 text-sm leading-relaxed"></div>
     <div class="border-t border-slate-200 px-4 py-2.5 text-[11px] text-slate-500 dark:border-white/10">
-      © 2026 Chaitanya Lalit Patil · Proprietary license · All rights reserved.
+      © 2026 BroAI · MIT License · All rights reserved.
     </div>
   </div>
 </div>
@@ -323,11 +272,11 @@ const $ = (s) => document.querySelector(s);
 const el = (tag, cls, html) => { const n = document.createElement(tag); if (cls) n.className = cls; if (html != null) n.innerHTML = html; return n; };
 const icons = () => window.lucide?.createIcons();
 
-function toast(msg, type = "info", duration = 4200) {
+function toast(msg, type = "info") {
   const colors = { info: "bg-slate-900 dark:bg-white dark:text-slate-900 text-white", error: "bg-red-600 text-white", warn: "bg-amber-500 text-white", ok: "bg-emerald-600 text-white" };
-  const t = el("div", `pointer-events-auto animate-fadeup rounded-xl px-4 py-3 text-sm shadow-lg ${colors[type] || colors.info}`, DOMPurify.sanitize(msg, { ADD_ATTR: ["target", "rel"] }));
+  const t = el("div", `pointer-events-auto animate-fadeup rounded-xl px-4 py-3 text-sm shadow-lg ${colors[type] || colors.info}`, DOMPurify.sanitize(msg));
   $("#toasts").appendChild(t);
-  setTimeout(() => { t.style.opacity = "0"; t.style.transition = "opacity .3s"; setTimeout(() => t.remove(), 320); }, duration);
+  setTimeout(() => { t.style.opacity = "0"; t.style.transition = "opacity .3s"; setTimeout(() => t.remove(), 320); }, 4200);
 }
 
 /* ---------------- Markdown rendering ---------------- */
@@ -342,19 +291,9 @@ marked.setOptions({
   }
 });
 
-if (typeof DOMPurify !== "undefined" && !DOMPurify.__broaiLinkHook) {
-  DOMPurify.addHook("afterSanitizeAttributes", (node) => {
-    if (node.tagName === "A") {
-      node.setAttribute("target", "_blank");
-      node.setAttribute("rel", "noopener noreferrer");
-    }
-  });
-  DOMPurify.__broaiLinkHook = true;
-}
-
 function renderMarkdown(container, text) {
   const raw = marked.parse(text || "");
-  container.innerHTML = DOMPurify.sanitize(raw, { ADD_ATTR: ["target", "rel"] });
+  container.innerHTML = DOMPurify.sanitize(raw, { ADD_ATTR: ["target"] });
   container.querySelectorAll("pre > code").forEach((code) => {
     const pre = code.parentElement;
     if (pre.parentElement?.classList.contains("code-wrap")) return;
@@ -455,7 +394,7 @@ function renderChat() {
   const box = $("#chatInner"); box.innerHTML = "";
   const chat = current();
   if (!chat || !chat.messages.length) { box.appendChild(emptyState()); icons(); return; }
-  chat.messages.forEach(m => box.appendChild(messageNode(m.role, m.display || m.content).row));
+  chat.messages.forEach(m => box.appendChild(messageNode(m.role, m.content).row));
   icons(); scrollToBottom(true);
 }
 
@@ -503,41 +442,14 @@ function setProgress(show, text, pct) {
   if (pct != null) { $("#progressBar").style.width = `${Math.round(pct * 100)}%`; $("#progressPct").textContent = `${Math.round(pct * 100)}%`; }
 }
 
-const IN_FRAME = (() => { try { return window.self !== window.top; } catch { return true; } })();
-
-async function requestAnyAdapter() {
-  const tries = [
-    undefined,
-    { powerPreference: "high-performance" },
-    { powerPreference: "low-power" },
-    { forceFallbackAdapter: true },
-  ];
-  for (const opts of tries) {
-    try {
-      const a = await navigator.gpu.requestAdapter(opts);
-      if (a) return a;
-    } catch { /* try next */ }
-  }
-  return null;
-}
-
 async function detectGPU() {
   if (!("gpu" in navigator)) { $("#gpuStat").textContent = "unavailable"; $("#gpuStat").className = "font-mono text-red-500"; toast("WebGPU is not available in this browser. Use Chrome/Edge 113+ or Safari 18+ on a GPU-capable device.", "error"); return false; }
   try {
-    const adapter = await requestAnyAdapter();
-    if (!adapter) {
-      $("#gpuStat").textContent = "no adapter"; $("#gpuStat").className = "font-mono text-amber-500";
-      const hint = IN_FRAME
-        ? `No GPU adapter in this embedded preview. <a href="${location.href}" target="_blank" rel="noopener noreferrer" class="underline font-semibold">Open BroAI in a new tab</a> to use your GPU.`
-        : "No GPU adapter found. Enable hardware acceleration in your browser settings (chrome://settings/system), then reload.";
-      toast(hint, "warn", 12000);
-      return false;
-    }
-    let label = "accelerated";
-    try { const info = adapter.info || (adapter.requestAdapterInfo ? await adapter.requestAdapterInfo() : null); if (info && info.vendor) label = String(info.vendor).slice(0, 14) || label; } catch { /* ignore */ }
-    $("#gpuStat").textContent = label; $("#gpuStat").className = "font-mono text-emerald-500";
+    const adapter = await navigator.gpu.requestAdapter();
+    if (!adapter) { $("#gpuStat").textContent = "no adapter"; $("#gpuStat").className = "font-mono text-amber-500"; toast("WebGPU exists but no GPU adapter was found. Model loading will fail.", "warn"); return false; }
+    $("#gpuStat").textContent = "accelerated"; $("#gpuStat").className = "font-mono text-emerald-500";
     return true;
-  } catch (e) { $("#gpuStat").textContent = "error"; $("#gpuStat").className = "font-mono text-red-500"; toast("WebGPU check failed: " + (e?.message || e), "error"); return false; }
+  } catch (e) { $("#gpuStat").textContent = "error"; $("#gpuStat").className = "font-mono text-red-500"; return false; }
 }
 
 async function loadModel() {
@@ -581,117 +493,23 @@ async function loadModel() {
     toast(`Failed to load model: ${String(e?.message || e).slice(0, 180)}`, "error");
   } finally { loading = false; $("#loadBtn").disabled = false; }
 }
-/* ---------------- Attachments: documents only, 100% local ----------------
-   The local chat models are text-only (no vision), so image attachments were
-   removed. Text, code and PDF files are read in-browser and passed as context. */
-let attachments = [];            // { kind:'doc', name, file }
-const MAX_DOC_CHARS = 24000;
-
-function renderAttachments() {
-  const row = $("#attachRow");
-  row.innerHTML = "";
-  row.classList.toggle("hidden", attachments.length === 0);
-  attachments.forEach((a, i) => {
-    const chip = document.createElement("div");
-    chip.className = "flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-2 py-1.5 text-xs dark:border-white/10 dark:bg-white/5";
-    const ic = document.createElement("i");
-    ic.setAttribute("data-lucide", "file-text"); ic.className = "h-4 w-4 text-slate-500";
-    chip.appendChild(ic);
-    const label = document.createElement("span");
-    label.className = "max-w-[10rem] truncate";
-    label.textContent = a.name;
-    chip.appendChild(label);
-    const x = document.createElement("button");
-    x.className = "rounded-md p-0.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-white/10";
-    x.innerHTML = '<i data-lucide="x" class="h-3.5 w-3.5"></i>';
-    x.onclick = () => { attachments.splice(i, 1); renderAttachments(); };
-    chip.appendChild(x);
-    row.appendChild(chip);
-  });
-  icons();
-}
-
-function clearAttachments() {
-  attachments = [];
-  renderAttachments();
-}
-
-function addAttachment(file) {
-  if (!file) return;
-  if (file.type.startsWith("image/")) {
-    toast("The local chat models are text-only — use the Image Lab for images.", "warn");
-    return;
-  }
-  if (file.size > 25 * 1024 * 1024) { toast("File is larger than 25 MB — pick a smaller one.", "warn"); return; }
-  attachments.push({ kind: "doc", name: file.name, file });
-  renderAttachments();
-}
-
-async function readDocText(file) {
-  const name = file.name.toLowerCase();
-  if (name.endsWith(".pdf")) {
-    const pdfjs = await import("https://esm.run/pdfjs-dist@4.6.82/build/pdf.min.mjs");
-    pdfjs.GlobalWorkerOptions.workerSrc = "https://esm.run/pdfjs-dist@4.6.82/build/pdf.worker.min.mjs";
-    const buf = await file.arrayBuffer();
-    const doc = await pdfjs.getDocument({ data: buf }).promise;
-    let out = "";
-    for (let p = 1; p <= doc.numPages && out.length < MAX_DOC_CHARS; p++) {
-      const page = await doc.getPage(p);
-      const tc = await page.getTextContent();
-      out += tc.items.map(i => i.str).join(" ") + "\n\n";
-    }
-    return out;
-  }
-  return await file.text();
-}
-
-async function buildAttachmentContext() {
-  const parts = [];
-  for (const a of attachments) {
-    const raw = (await readDocText(a.file)) || "";
-    const clipped = raw.length > MAX_DOC_CHARS ? raw.slice(0, MAX_DOC_CHARS) + "\n…(truncated)" : raw;
-    parts.push(`[Attached file: ${a.name}]\n"""\n${clipped.trim() || "(file appears empty or is not text)"}\n"""`);
-  }
-  return parts.join("\n\n");
-}
-
-$("#attachFileBtn").onclick = () => $("#attachFile").click();
-$("#attachFile").addEventListener("change", e => { addAttachment(e.target.files?.[0]); e.target.value = ""; });
 
 
 async function send() {
   const input = $("#input");
   const text = input.value.trim();
-  if (generating) return;
-  if (!text && !attachments.length) return;
+  if (!text || generating) return;
   if (!engine) { toast("Load a model first (button in the header).", "warn"); return; }
   const chat = current() || (newChat(), current());
-
-  // Attachments are read locally: text, code and PDF files are extracted in the
-  // browser — nothing leaves the device.
-
-
-  let context = "";
-  if (attachments.length) {
-    try { context = await buildAttachmentContext(); }
-    catch (e) { toast("Could not read attachment: " + (e?.message || e), "error"); return; }
-  }
-  const shown = attachments.length
-    ? `${attachments.map(a => `📎 **${a.name}**`).join("  ")}\n\n${text}`.trim()
-    : text;
-  const payload = context ? `${context}\n\n${text || "Tell me about the attached content."}` : text;
-
   input.value = ""; input.style.height = "auto";
-  clearAttachments();
 
-  autoTitle(chat, text || attachments[0]?.name || "Attachment");
-  chat.messages.push({ role: "user", content: payload, display: shown });
+  autoTitle(chat, text);
+  chat.messages.push({ role: "user", content: text });
   chat.updated = Date.now(); saveStore(); renderHistory();
 
   const box = $("#chatInner");
   if (box.querySelector("h1")) box.innerHTML = "";
-  box.appendChild(messageNode("user", shown).row);
-
+  box.appendChild(messageNode("user", text).row);
   const { row, bubble } = messageNode("assistant", "");
   bubble.classList.add("cursor-blink");
   box.appendChild(row);
@@ -707,7 +525,7 @@ async function send() {
     const stream = await engine.chat.completions.create({
       stream: true,
       temperature: 0.7,
-      max_tokens: -1, // unlimited: generate until the model stops or the context window is full
+      max_tokens: 1536,
       messages: [
         { role: "system", content: "You are BroAI, a helpful, concise assistant running fully offline in the user's browser. Use markdown and fenced code blocks with language tags." },
         ...chat.messages.map(m => ({ role: m.role, content: m.content }))
@@ -831,34 +649,6 @@ function logLine(kind, args) {
 /* Worker source: user code never touches the main thread, so a runaway
    loop can be terminated instead of freezing the tab. */
 const WORKER_SRC = `
-'use strict';
-/* Defense in depth: the real network APIs are removed from the worker global
-   itself, so recovering the global (Function('return this')(), indirect eval,
-   self, etc.) cannot get them back. */
-const RealFunction = Function;
-const realPost = self.postMessage.bind(self);
-const denied = (name) => { throw new Error(name + ' is disabled inside the BroAI sandbox'); };
-const neuter = (name) => {
-  const stub = function () { denied(name); };
-  try {
-    Object.defineProperty(globalThis, name, { configurable: true, writable: true, value: stub });
-  } catch (_) { /* ignore */ }
-  try {
-    const proto = Object.getPrototypeOf(globalThis);
-    if (proto && name in proto) Object.defineProperty(proto, name, { configurable: true, writable: true, value: stub });
-  } catch (_) { /* ignore */ }
-};
-[
-  'fetch', 'XMLHttpRequest', 'WebSocket', 'importScripts', 'EventSource',
-  'Worker', 'SharedWorker', 'WebTransport', 'RTCPeerConnection', 'postMessage',
-  'Request', 'Response', 'BroadcastChannel', 'open'
-].forEach(neuter);
-try { if (globalThis.navigator) globalThis.navigator.sendBeacon = () => denied('navigator.sendBeacon'); } catch (_) {}
-// Block recovery of the true global through the Function constructor.
-const BlockedFunction = function () { denied('The Function constructor'); };
-try { Object.defineProperty(globalThis, 'Function', { configurable: true, writable: true, value: BlockedFunction }); } catch (_) {}
-try { Object.defineProperty(RealFunction.prototype, 'constructor', { configurable: true, writable: true, value: BlockedFunction }); } catch (_) {}
-
 self.onmessage = async (e) => {
   const { code, maxMessages } = e.data;
   let sent = 0;
@@ -867,7 +657,7 @@ self.onmessage = async (e) => {
     let safe;
     try { safe = args.map(a => (typeof a === 'string' ? a : JSON.parse(JSON.stringify(a, (k, v) => typeof v === 'bigint' ? String(v) : v)))); }
     catch { safe = args.map(a => String(a)); }
-    realPost({ kind, args: safe });
+    self.postMessage({ kind, args: safe });
   };
   const sandboxConsole = {
     log: (...a) => post('log', a),
@@ -877,9 +667,9 @@ self.onmessage = async (e) => {
     warn: (...a) => post('warn', a),
     error: (...a) => post('error', a)
   };
-  const blocked = (name) => () => denied(name);
+  const blocked = (name) => () => { throw new Error(name + ' is disabled inside the BroAI sandbox'); };
   try {
-    const fn = new RealFunction(
+    const fn = new Function(
       'console', 'fetch', 'XMLHttpRequest', 'importScripts', 'WebSocket', 'self', 'postMessage', 'globalThis',
       '"use strict";\\nreturn (async () => {\\n' + code + '\\n})();'
     );
@@ -888,10 +678,10 @@ self.onmessage = async (e) => {
       undefined, blocked('postMessage'), undefined
     );
     if (value !== undefined) post('result', [value]);
-    realPost({ kind: '__done' });
+    self.postMessage({ kind: '__done' });
   } catch (err) {
     post('error', [(err && err.stack) || String(err)]);
-    realPost({ kind: '__done' });
+    self.postMessage({ kind: '__done' });
   }
 };
 `;
@@ -1009,248 +799,7 @@ $("#newChat").onclick = newChat;
 $("#loadBtn").onclick = loadModel;
 $("#sendBtn").onclick = send;
 $("#stopBtn").onclick = () => { abortRequested = true; };
-
-/* ---------------- Image Lab (Transformers.js, fully client-side) ---------------- */
-const IMG_TASKS = {
-  bg:      { task: "background-removal", model: "briaai/RMBG-1.4",                        label: "Removing background" },
-  upscale: { task: "image-to-image",     model: "Xenova/swin2SR-classical-sr-x2-64",      label: "Upscaling 2×" },
-  depth:   { task: "depth-estimation",   model: "onnx-community/depth-anything-v2-small", label: "Estimating depth" },
-  caption: { task: "image-to-text",      model: "Xenova/vit-gpt2-image-captioning",       label: "Describing image" },
-};
-let tfjs = null;            // transformers.js module
-const imgPipes = new Map(); // key -> pipeline
-let imgBusy = false, imgSrcUrl = null;
-
-function openImagelab() {
-  $("#imagelab").classList.remove("translate-x-full");
-  $("#imagelabScrim").classList.remove("hidden");
-}
-function closeImagelab() {
-  $("#imagelab").classList.add("translate-x-full");
-  $("#imagelabScrim").classList.add("hidden");
-}
-function imgProgress(text, pct) {
-  const box = $("#imgProgress");
-  if (pct === null) { box.classList.add("hidden"); return; }
-  box.classList.remove("hidden");
-  $("#imgProgressText").textContent = text;
-  $("#imgProgressPct").textContent = Math.round(pct) + "%";
-  $("#imgProgressBar").style.width = Math.max(2, Math.min(100, pct)) + "%";
-}
-$("#imgFile").addEventListener("change", (e) => {
-  const file = e.target.files && e.target.files[0];
-  if (!file) return;
-  if (imgSrcUrl) URL.revokeObjectURL(imgSrcUrl);
-  imgSrcUrl = URL.createObjectURL(file);
-  const el = $("#imgIn");
-  el.src = imgSrcUrl; el.classList.remove("hidden");
-  $("#imgInEmpty").classList.add("hidden");
-});
-
-async function rawToUrl(raw) {
-  if (raw && typeof raw.toBlob === "function") return URL.createObjectURL(await raw.toBlob());
-  const cv = raw.toCanvas ? raw.toCanvas() : null;
-  if (cv) return cv.toDataURL("image/png");
-  throw new Error("Unsupported image output");
-}
-
-/* Big photos blow past ONNX Runtime's tensor limits and can crash the GPU device
-   ("[Device] is lost"), so every task gets a downscaled copy plus an explicit
-   backend/precision plan. Attempts run in order until one succeeds. */
-const IMG_PLANS = {
-  // Swin2SR emits a 4x-sized feature map — WebGPU reliably loses the device on it, so CPU first.
-  upscale: [
-    { device: "wasm",   dtype: "fp32", maxSide: 384 },
-    { device: "wasm",   dtype: "fp32", maxSide: 256 },
-  ],
-  depth: [
-    { device: "webgpu", dtype: "fp32", maxSide: 504 },
-    { device: "wasm",   dtype: "fp32", maxSide: 392 },
-  ],
-  // q4 weights of vit-gpt2 are missing quant scales upstream → force q8 on CPU.
-  caption: [
-    { device: "wasm",   dtype: "q8",   maxSide: 384 },
-    { device: "wasm",   dtype: "fp32", maxSide: 384 },
-  ],
-  bg: [
-    { device: "webgpu", dtype: "fp32", maxSide: 1024 },
-    { device: "wasm",   dtype: "fp32", maxSide: 512 },
-  ],
-};
-const IMG_MAX_SIDE = { upscale: 384, depth: 504, bg: 1024, caption: 384 };
-function loadImageEl(url) {
-  return new Promise((resolve, reject) => {
-    const im = new Image();
-    im.crossOrigin = "anonymous";
-    im.onload = () => resolve(im);
-    im.onerror = () => reject(new Error("Could not read that image."));
-    im.src = url;
-  });
-}
-async function prepareInput(url, maxSide) {
-  const im = await loadImageEl(url);
-  const w = im.naturalWidth || im.width, h = im.naturalHeight || im.height;
-  const scale = Math.min(1, maxSide / Math.max(w, h));
-  if (scale >= 1) return { url, resized: false, width: w, height: h };
-  const cv = document.createElement("canvas");
-  cv.width = Math.max(1, Math.round(w * scale));
-  cv.height = Math.max(1, Math.round(h * scale));
-  const ctx = cv.getContext("2d");
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(im, 0, 0, cv.width, cv.height);
-  return { url: cv.toDataURL("image/png"), resized: true, width: cv.width, height: cv.height };
-}
-
-
-/* RMBG-1.4 is a custom architecture that has no pipeline mapping in Transformers.js,
-   so we run the model directly and composite the alpha mask ourselves. */
-let rmbg = null, rmbgDevice = null;
-async function removeBackgroundLocal(url, onProgress, device) {
-  if (!rmbg || rmbgDevice !== device) {
-    const opts = { device, dtype: "fp32", config: { model_type: "custom" }, progress_callback: onProgress };
-    const model = await tfjs.AutoModel.from_pretrained("briaai/RMBG-1.4", opts);
-    const processor = await tfjs.AutoProcessor.from_pretrained("briaai/RMBG-1.4", {
-      config: {
-        do_normalize: true, do_pad: false, do_rescale: true, do_resize: true,
-        image_mean: [0.5, 0.5, 0.5], image_std: [1, 1, 1],
-        feature_extractor_type: "ImageFeatureExtractor",
-        resample: 2, rescale_factor: 0.00392156862745098,
-        size: { width: 1024, height: 1024 },
-      },
-    });
-    rmbg = { model, processor };
-    rmbgDevice = device;
-  }
-  const image = await tfjs.RawImage.fromURL(url);
-  const { pixel_values } = await rmbg.processor(image);
-  const { output } = await rmbg.model({ input: pixel_values });
-  const maskData = await tfjs.RawImage.fromTensor(output[0].mul(255).to("uint8")).resize(image.width, image.height);
-
-  const canvas = document.createElement("canvas");
-  canvas.width = image.width; canvas.height = image.height;
-  const ctx = canvas.getContext("2d");
-  ctx.drawImage(image.toCanvas(), 0, 0);
-  const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  for (let i = 0; i < maskData.data.length; ++i) pixels.data[4 * i + 3] = maskData.data[i];
-  ctx.putImageData(pixels, 0, 0);
-  return canvas.toDataURL("image/png");
-}
-
-async function runImageTask() {
-  if (imgBusy) return;
-  const key = $("#imgTask").value;
-  const cfg = IMG_TASKS[key];
-  if (!imgSrcUrl) { toast("Choose a source image first.", "warn"); return; }
-  imgBusy = true;
-  $("#imgRun").disabled = true;
-  $("#imgOut").classList.add("hidden");
-  $("#imgText").classList.add("hidden");
-  $("#imgDownload").classList.add("hidden");
-  $("#imgOutEmpty").classList.remove("hidden");
-  try {
-    imgProgress("Loading Transformers.js…", 3);
-    if (!tfjs) {
-      tfjs = await import("https://esm.run/@huggingface/transformers");
-      tfjs.env.allowLocalModels = false;
-    }
-    const onProgress = (p) => {
-      if (p.status === "progress" && p.total) imgProgress(`Downloading ${p.file || "weights"}…`, (p.loaded / p.total) * 100);
-      else if (p.status === "ready") imgProgress("Model ready", 100);
-    };
-
-    const hasGpu = typeof navigator !== "undefined" && !!navigator.gpu;
-    const plan = (IMG_PLANS[key] || [{ device: "wasm", dtype: "fp32", maxSide: 512 }])
-      .filter((a) => a.device !== "webgpu" || hasGpu);
-    const attempts = plan.length ? plan : [{ device: "wasm", dtype: "fp32", maxSide: 512 }];
-
-    const runAttempt = async (attempt, isRetry) => {
-      const prepped = await prepareInput(imgSrcUrl, attempt.maxSide);
-      imgProgress(
-        `${cfg.label} on ${attempt.device === "webgpu" ? "GPU" : "CPU"} at ${prepped.width}×${prepped.height}${isRetry ? " (retry)" : ""}…`,
-        100,
-      );
-      if (key === "bg") return await removeBackgroundLocal(prepped.url, onProgress, attempt.device);
-      const pipeKey = `${key}:${attempt.device}:${attempt.dtype}`;
-      let pipe = imgPipes.get(pipeKey);
-      if (!pipe) {
-        pipe = await tfjs.pipeline(cfg.task, cfg.model, {
-          device: attempt.device,
-          dtype: attempt.dtype,
-          progress_callback: onProgress,
-        });
-        imgPipes.set(pipeKey, pipe);
-      }
-      try {
-        return await pipe(prepped.url);
-      } catch (err) {
-        // A lost GPU device / broken session leaves the pipeline unusable — drop it.
-        imgPipes.delete(pipeKey);
-        if (key === "bg") { rmbg = null; rmbgDevice = null; }
-        throw err;
-      }
-    };
-
-    let out, lastErr = null;
-    for (let i = 0; i < attempts.length; i++) {
-      try {
-        out = await runAttempt(attempts[i], i > 0);
-        lastErr = null;
-        break;
-      } catch (err) {
-        lastErr = err;
-        console.warn(`Image task attempt ${i + 1} failed:`, err);
-        if (i < attempts.length - 1) imgProgress("Falling back to a safer backend…", 100);
-      }
-    }
-    if (lastErr) throw lastErr;
-
-    if (key === "bg") {
-      const el = $("#imgOut");
-      el.src = out; el.classList.remove("hidden");
-      $("#imgOutEmpty").classList.add("hidden");
-      const dl = $("#imgDownload");
-      dl.href = out; dl.classList.remove("hidden");
-      imgProgress(null, null);
-      toast("Done — generated locally on your device.", "ok");
-      return;
-    }
-
-
-
-
-    if (key === "caption") {
-      const text = Array.isArray(out) ? (out[0]?.generated_text || "") : (out.generated_text || "");
-      const el = $("#imgText");
-      el.textContent = text || "No description produced.";
-      el.classList.remove("hidden");
-    } else {
-      const raw = key === "depth" ? out.depth : (Array.isArray(out) ? out[0] : out);
-      const url = await rawToUrl(raw);
-      const el = $("#imgOut");
-      el.src = url; el.classList.remove("hidden");
-      $("#imgOutEmpty").classList.add("hidden");
-      const dl = $("#imgDownload");
-      dl.href = url; dl.classList.remove("hidden");
-    }
-    imgProgress(null, null);
-    toast("Done — generated locally on your device.", "ok");
-  } catch (err) {
-    console.error(err);
-    imgProgress(null, null);
-    toast("Image task failed: " + (err?.message || err), "error");
-  } finally {
-    imgBusy = false;
-    $("#imgRun").disabled = false;
-    icons();
-  }
-}
-$("#imgRun").onclick = runImageTask;
-$("#closeImagelab").onclick = closeImagelab;
-$("#imagelabScrim").onclick = closeImagelab;
-
 $("#sandboxBtn").onclick = openSandbox;
-$("#imageBtn").onclick = openImagelab;
 $("#closeSandbox").onclick = closeSandboxPanel;
 $("#sandboxScrim").onclick = closeSandboxPanel;
 $("#runCode").onclick = runSandbox;
@@ -1328,65 +877,30 @@ Built for people who want useful AI without handing their data to anyone.` },
 - *WebGPU unavailable*: use Chrome/Edge 113+, or Safari 18+, on a GPU-capable device.
 - *Loading is slow*: you're downloading weights for the first time. Pick a smaller model or let the download finish once.` },
   readme: { title: "Read me", body: `
-# BroAI — 100% Client-Side Local Browser AI Engine
+## BroAI — read me
+A single-page, dependency-light workspace for local LLM inference.
 
-**BroAI** is a private, lightweight, client-side web application that executes Large Language Models (LLMs) directly in your browser using **WebGPU** and the \`@mlc-ai/web-llm\` inference engine. No external API keys, server infrastructure, or data collection required — everything runs locally on your hardware.
+**Stack:** WebGPU · @mlc-ai/web-llm · Tailwind CSS · marked · highlight.js · DOMPurify · Lucide.
 
----
+**Features**
+- Grouped model catalog with automatic fallback to available MLC builds.
+- Streaming chat with markdown, syntax highlighting and sanitized HTML output.
+- Conversation history with auto-titling, per-chat delete, clear chat and clear-all.
+- JavaScript sandbox running in an isolated Web Worker with time and memory limits.
+- Live WebGPU status, JS heap usage and tokens-per-second readout.
 
-## Key Features
-- **100% Private & Local Execution:** Prompt processing and model inference occur entirely within browser VRAM via WebGPU. Your data never leaves your machine.
-- **Curated Small Model Library:** Pre-configured support for efficient compact models including:
-  - **Fast & Light:** Qwen 2.5 (0.5B), Qwen 3.5 (0.8B), Gemma 3n, SmolLM2 (1.7B)
-  - **Mid & Logic:** Llama 3.2 (1B / 3B), SmolLM3 (3B), Phi-3.5 Mini, Phi-4 Mini (3.8B)
-- **Local Image Lab:** Transformers.js on WebGPU for background removal, 2× upscaling, depth maps and image captioning — no backend.
-- **Interactive JS Sandbox:** Slide-out JavaScript execution environment allowing you to test, run, and view console outputs for code generated by the AI in real time.
-- **Persistent Local Storage:** Save and manage multiple conversation threads automatically using browser \`localStorage\`.
-- **Rich Markdown Formatting:** Real-time stream parsing with syntax highlighting (via Highlight.js), copy buttons, and XSS sanitization (via DOMPurify).
-- **Hardware & Memory Monitoring:** Live tracking of WebGPU status, JS Heap RAM usage, and generation speeds in tokens per second (t/s).
+**Requirements:** a WebGPU-capable browser and enough free VRAM for the chosen model.
 
----
-
-## Tech Stack
-- **Frontend:** Single-file HTML5, Tailwind CSS (v3 CDN), Lucide Icons
-- **LLM Engine:** WebLLM (\`@mlc-ai/web-llm\` via ESM)
-- **Vision Engine:** Transformers.js (\`@huggingface/transformers\` via ESM)
-- **Markdown & Parsing:** Marked.js, DOMPurify, Highlight.js (Atom One Dark theme)
-
----
-
-## Quick Start
-1. **System Requirements:** A WebGPU-supported browser (Google Chrome 113+, Microsoft Edge 113+, or Chromium-based browsers with hardware acceleration enabled).
-2. **Installation:** Download or clone the \`index.html\` file to your device.
-3. **Run:** Open \`index.html\` directly in your browser or serve it via a local static HTTP server (e.g., \`python -m http.server 8000\` or VS Code Live Server).
-4. **Load Model:** Choose a model from the top navigation dropdown and click **Load**. Model weights will be downloaded once and cached in your browser's IndexedDB for offline use.
-
----
-
-## Project Structure
-\`\`\`text
-├── index.html          # Entire single-file application (UI, styles, and engine logic)
-├── README.md           # Project documentation
-└── LICENSE             # Software license & usage rights
-\`\`\`` },
+**Privacy:** no telemetry, no network calls other than fetching model weights and CDN assets.` },
   license: { title: "License", body: `
-## COPYRIGHT AND PROPRIETARY RIGHTS NOTICE
-Copyright (c) 2026 Chaitanya Lalit Patil. All rights reserved.
+## MIT License
+Copyright © 2026 BroAI. **All rights reserved.**
 
-**1. PROPRIETARY RIGHTS**
-This software, source code, design, logos, and associated documentation ("BroAI") are the sole proprietary property of Chaitanya Lalit Patil.
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
-**2. PERMITTED USE**
-Permission is granted to individuals to download, view, and run this software locally for personal, non-commercial, and educational purposes only.
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
 
-**3. RESTRICTIONS**
-Except as expressly authorized above, you shall not:
-a. Modify, translate, adapt, or create derivative works based on this software.
-b. Reproduce, redistribute, publish, sell, rent, lease, sublicense, or commercially exploit this software, in whole or in part, without prior written permission from the copyright holder.
-c. Reverse engineer, decompile, or attempt to derive the underlying source code or algorithms of any compiled assets associated with this software, except where permitted by applicable law.
-
-**4. NO WARRANTY**
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 Model weights are distributed under their own upstream licenses.` }
 };
