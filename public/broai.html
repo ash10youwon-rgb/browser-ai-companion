@@ -916,16 +916,18 @@ $("#loadBtn").onclick = loadModel;
 $("#sendBtn").onclick = send;
 $("#stopBtn").onclick = () => { abortRequested = true; };
 
-/* ---------------- Image Lab (Transformers.js, fully client-side) ---------------- */
+/* ---------------- Image Lab: on-device + cloud generation ---------------- */
+const TFJS_URL = "https://esm.run/@huggingface/transformers@3.7.5";
 const IMG_TASKS = {
-  bg:      { task: "background-removal", model: "briaai/RMBG-1.4",                        label: "Removing background" },
-  upscale: { task: "image-to-image",     model: "Xenova/swin2SR-classical-sr-x2-64",      label: "Upscaling 2×" },
-  depth:   { task: "depth-estimation",   model: "onnx-community/depth-anything-v2-small", label: "Estimating depth" },
-  caption: { task: "image-to-text",      model: "Xenova/vit-gpt2-image-captioning",       label: "Describing image" },
+  bg:      { label: "Removing background", max: 1024 },
+  upscale: { task: "image-to-image",   model: "Xenova/swin2SR-classical-sr-x2-64",      label: "Upscaling 2×",     max: 384 },
+  depth:   { task: "depth-estimation", model: "onnx-community/depth-anything-v2-small", label: "Estimating depth", max: 518 },
+  caption: { task: "image-to-text",    model: "Xenova/vit-gpt2-image-captioning",       label: "Describing image", max: 640 },
 };
 let tfjs = null;            // transformers.js module
 const imgPipes = new Map(); // key -> pipeline
-let imgBusy = false, imgSrcUrl = null;
+let rmbg = null;            // { model, processor }
+let imgBusy = false, imgSrcUrl = null, outUrl = null;
 
 function openImagelab() {
   $("#imagelab").classList.remove("translate-x-full");
@@ -948,16 +950,169 @@ $("#imgFile").addEventListener("change", (e) => {
   if (!file) return;
   if (imgSrcUrl) URL.revokeObjectURL(imgSrcUrl);
   imgSrcUrl = URL.createObjectURL(file);
-  const el = $("#imgIn");
-  el.src = imgSrcUrl; el.classList.remove("hidden");
+  const node = $("#imgIn");
+  node.src = imgSrcUrl; node.classList.remove("hidden");
   $("#imgInEmpty").classList.add("hidden");
 });
 
+/* ---- API keys (local only) ---- */
+const KEYS = { hf: "broai.hfKey", vid: "broai.vidKey" };
+function loadKeys() {
+  $("#hfKey").value = localStorage.getItem(KEYS.hf) || "";
+  $("#vidKey").value = localStorage.getItem(KEYS.vid) || "";
+}
+loadKeys();
+$("#saveKeys").onclick = () => {
+  localStorage.setItem(KEYS.hf, $("#hfKey").value.trim());
+  localStorage.setItem(KEYS.vid, $("#vidKey").value.trim());
+  toast("Keys saved in this browser only.", "ok");
+};
+$("#clearKeys").onclick = () => {
+  localStorage.removeItem(KEYS.hf); localStorage.removeItem(KEYS.vid);
+  loadKeys(); toast("Keys cleared.", "warn");
+};
+
+/* ---- Mode tabs ---- */
+function setMode(mode) {
+  document.querySelectorAll(".modeTab").forEach(b => {
+    const on = b.dataset.mode === mode;
+    b.classList.toggle("bg-white", on);
+    b.classList.toggle("dark:bg-white/10", on);
+    b.classList.toggle("shadow-sm", on);
+    b.classList.toggle("text-brand-600", on);
+  });
+  $("#panelLocal").classList.toggle("hidden", mode !== "local");
+  $("#panelCloud").classList.toggle("hidden", mode !== "cloud");
+  $("#panelVideo").classList.toggle("hidden", mode !== "video");
+  localStorage.setItem("broai.labMode", mode);
+}
+document.querySelectorAll(".modeTab").forEach(b => b.onclick = () => setMode(b.dataset.mode));
+setMode(localStorage.getItem("broai.labMode") || "local");
+
+$("#cloudModel").onchange = (e) => $("#cloudModelCustom").classList.toggle("hidden", e.target.value !== "__custom");
+$("#vidProvider").onchange = (e) => {
+  const custom = e.target.value === "custom";
+  $("#vidTargetLabel").textContent = custom ? "Endpoint URL" : "Model id";
+  $("#vidModel").value = custom ? "https://" : "Wan-AI/Wan2.1-T2V-1.3B-Diffusers";
+};
+
+/* ---- Output helpers ---- */
+function resetOutput() {
+  if (outUrl) { URL.revokeObjectURL(outUrl); outUrl = null; }
+  $("#imgOut").classList.add("hidden");
+  $("#vidOut").classList.add("hidden");
+  $("#imgText").classList.add("hidden");
+  $("#imgDownload").classList.add("hidden");
+  $("#imgOutEmpty").classList.remove("hidden");
+}
+function showOutput(url, kind) {
+  const node = kind === "video" ? $("#vidOut") : $("#imgOut");
+  node.src = url; node.classList.remove("hidden");
+  $("#imgOutEmpty").classList.add("hidden");
+  const dl = $("#imgDownload");
+  dl.href = url;
+  dl.setAttribute("download", kind === "video" ? "broai-video.mp4" : "broai-image.png");
+  dl.classList.remove("hidden");
+}
+
+/* Big inputs are the main cause of ONNX "Integer overflow" / OOM failures,
+   so every source image is normalised to a safe size first. */
+function loadImageEl(url) {
+  return new Promise((res, rej) => {
+    const im = new Image();
+    im.crossOrigin = "anonymous";
+    im.onload = () => res(im);
+    im.onerror = () => rej(new Error("Could not read that image file."));
+    im.src = url;
+  });
+}
+async function normalizedSource(url, maxSide) {
+  const im = await loadImageEl(url);
+  const scale = Math.min(1, maxSide / Math.max(im.naturalWidth, im.naturalHeight));
+  const w = Math.max(32, Math.round(im.naturalWidth * scale));
+  const h = Math.max(32, Math.round(im.naturalHeight * scale));
+  const cv = document.createElement("canvas");
+  cv.width = w; cv.height = h;
+  const ctx = cv.getContext("2d");
+  ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, w, h); // flatten transparency
+  ctx.drawImage(im, 0, 0, w, h);
+  return cv.toDataURL("image/png");
+}
+
+async function ensureTfjs() {
+  if (!tfjs) {
+    tfjs = await import(TFJS_URL);
+    tfjs.env.allowLocalModels = false;
+  }
+  return tfjs;
+}
+const hasGPU = () => typeof navigator !== "undefined" && !!navigator.gpu;
+
 async function rawToUrl(raw) {
-  if (raw && typeof raw.toBlob === "function") return URL.createObjectURL(await raw.toBlob());
-  const cv = raw.toCanvas ? raw.toCanvas() : null;
+  if (raw && typeof raw.toBlob === "function") {
+    const blob = await raw.toBlob();
+    outUrl = URL.createObjectURL(blob);
+    return outUrl;
+  }
+  const cv = raw?.toCanvas ? raw.toCanvas() : null;
   if (cv) return cv.toDataURL("image/png");
   throw new Error("Unsupported image output");
+}
+
+async function getPipe(key, cfg, device) {
+  const id = key + ":" + device;
+  let pipe = imgPipes.get(id);
+  if (pipe) return pipe;
+  pipe = await tfjs.pipeline(cfg.task, cfg.model, {
+    device,
+    dtype: "fp32",
+    progress_callback: (p) => {
+      if (p.status === "progress" && p.total) imgProgress(`Downloading ${p.file || "weights"}…`, (p.loaded / p.total) * 100);
+      else if (p.status === "ready") imgProgress("Model ready", 100);
+    },
+  });
+  imgPipes.set(id, pipe);
+  return pipe;
+}
+
+/* RMBG-1.4 has no "background-removal" pipeline mapping, so drive the
+   model + processor directly and composite the mask ourselves. */
+async function removeBackground(src) {
+  const { AutoModel, AutoProcessor, RawImage } = tfjs;
+  if (!rmbg) {
+    const model = await AutoModel.from_pretrained("briaai/RMBG-1.4", {
+      config: { model_type: "custom" },
+      dtype: "fp32",
+      progress_callback: (p) => {
+        if (p.status === "progress" && p.total) imgProgress(`Downloading ${p.file || "weights"}…`, (p.loaded / p.total) * 100);
+      },
+    });
+    const processor = await AutoProcessor.from_pretrained("briaai/RMBG-1.4", {
+      config: {
+        do_normalize: true, do_pad: false, do_rescale: true, do_resize: true,
+        image_mean: [0.5, 0.5, 0.5], image_std: [1, 1, 1],
+        feature_extractor_type: "ImageFeatureExtractor",
+        resample: 2, rescale_factor: 0.00392156862745098,
+        size: { width: 1024, height: 1024 },
+      },
+    });
+    rmbg = { model, processor };
+  }
+  const image = await RawImage.fromURL(src);
+  const { pixel_values } = await rmbg.processor(image);
+  const out = await rmbg.model({ input: pixel_values });
+  const tensor = out.output ?? Object.values(out)[0];
+  const mask = await RawImage.fromTensor(tensor[0].mul(255).to("uint8")).resize(image.width, image.height);
+
+  const cv = document.createElement("canvas");
+  cv.width = image.width; cv.height = image.height;
+  const ctx = cv.getContext("2d");
+  const bitmap = await loadImageEl(src);
+  ctx.drawImage(bitmap, 0, 0, cv.width, cv.height);
+  const data = ctx.getImageData(0, 0, cv.width, cv.height);
+  for (let i = 0; i < mask.data.length; i++) data.data[i * 4 + 3] = mask.data[i];
+  ctx.putImageData(data, 0, 0);
+  return cv.toDataURL("image/png");
 }
 
 async function runImageTask() {
@@ -967,44 +1122,39 @@ async function runImageTask() {
   if (!imgSrcUrl) { toast("Choose a source image first.", "warn"); return; }
   imgBusy = true;
   $("#imgRun").disabled = true;
-  $("#imgOut").classList.add("hidden");
-  $("#imgText").classList.add("hidden");
-  $("#imgDownload").classList.add("hidden");
-  $("#imgOutEmpty").classList.remove("hidden");
+  resetOutput();
   try {
     imgProgress("Loading Transformers.js…", 3);
-    if (!tfjs) {
-      tfjs = await import("https://esm.run/@huggingface/transformers");
-      tfjs.env.allowLocalModels = false;
-    }
-    let pipe = imgPipes.get(key);
-    if (!pipe) {
-      const device = (typeof navigator !== "undefined" && navigator.gpu) ? "webgpu" : "wasm";
-      pipe = await tfjs.pipeline(cfg.task, cfg.model, {
-        device,
-        progress_callback: (p) => {
-          if (p.status === "progress" && p.total) imgProgress(`Downloading ${p.file || "weights"}…`, (p.loaded / p.total) * 100);
-          else if (p.status === "ready") imgProgress("Model ready", 100);
-        },
-      });
-      imgPipes.set(key, pipe);
-    }
-    imgProgress(cfg.label + "…", 100);
-    const out = await pipe(imgSrcUrl);
+    await ensureTfjs();
+    const src = await normalizedSource(imgSrcUrl, cfg.max);
 
-    if (key === "caption") {
-      const text = Array.isArray(out) ? (out[0]?.generated_text || "") : (out.generated_text || "");
-      const el = $("#imgText");
-      el.textContent = text || "No description produced.";
-      el.classList.remove("hidden");
+    if (key === "bg") {
+      imgProgress(cfg.label + "…", 100);
+      showOutput(await removeBackground(src), "image");
     } else {
-      const raw = key === "depth" ? out.depth : (Array.isArray(out) ? out[0] : out);
-      const url = await rawToUrl(raw);
-      const el = $("#imgOut");
-      el.src = url; el.classList.remove("hidden");
-      $("#imgOutEmpty").classList.add("hidden");
-      const dl = $("#imgDownload");
-      dl.href = url; dl.classList.remove("hidden");
+      let out;
+      try {
+        const pipe = await getPipe(key, cfg, hasGPU() ? "webgpu" : "wasm");
+        imgProgress(cfg.label + "…", 100);
+        out = await pipe(src);
+      } catch (gpuErr) {
+        if (!hasGPU()) throw gpuErr;
+        console.warn("WebGPU run failed, retrying on CPU:", gpuErr);
+        imgProgress("GPU path failed — retrying on CPU…", 20);
+        const pipe = await getPipe(key, cfg, "wasm");
+        imgProgress(cfg.label + " (CPU)…", 100);
+        out = await pipe(src);
+      }
+
+      if (key === "caption") {
+        const text = Array.isArray(out) ? (out[0]?.generated_text || "") : (out.generated_text || "");
+        const node = $("#imgText");
+        node.textContent = text || "No description produced.";
+        node.classList.remove("hidden");
+      } else {
+        const raw = key === "depth" ? out.depth : (Array.isArray(out) ? out[0] : out);
+        showOutput(await rawToUrl(raw), "image");
+      }
     }
     imgProgress(null, null);
     toast("Done — generated locally on your device.", "ok");
@@ -1018,9 +1168,100 @@ async function runImageTask() {
     icons();
   }
 }
+
+/* ---- Cloud generation (user's own API keys) ---- */
+async function providerError(res) {
+  let detail = "";
+  try {
+    const txt = await res.text();
+    try { detail = JSON.parse(txt).error || txt; } catch { detail = txt; }
+  } catch { /* ignore */ }
+  if (res.status === 401 || res.status === 403) return "Invalid or missing API key.";
+  if (res.status === 404) return "Model not found or not served by this provider.";
+  if (res.status === 429) return "Rate limited — try again shortly.";
+  if (res.status === 503) return "Model is warming up on the provider, retry in a moment.";
+  return `Provider error ${res.status}: ${String(detail).slice(0, 300)}`;
+}
+
+async function runCloudImage() {
+  if (imgBusy) return;
+  const token = ($("#hfKey").value || localStorage.getItem(KEYS.hf) || "").trim();
+  const prompt = $("#cloudPrompt").value.trim();
+  const sel = $("#cloudModel").value;
+  const model = sel === "__custom" ? $("#cloudModelCustom").value.trim() : sel;
+  if (!token) { toast("Add your Hugging Face API key first.", "warn"); $("#keysBox").open = true; return; }
+  if (!model) { toast("Enter a model id.", "warn"); return; }
+  if (!prompt) { toast("Write a prompt first.", "warn"); return; }
+  imgBusy = true; $("#cloudRun").disabled = true; resetOutput();
+  try {
+    imgProgress("Generating on provider…", 45);
+    const res = await fetch(`https://router.huggingface.co/hf-inference/models/${model}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "image/png" },
+      body: JSON.stringify({ inputs: prompt }),
+    });
+    if (!res.ok) throw new Error(await providerError(res));
+    const blob = await res.blob();
+    if (!blob.type.startsWith("image/")) throw new Error("Provider did not return an image.");
+    outUrl = URL.createObjectURL(blob);
+    showOutput(outUrl, "image");
+    imgProgress(null, null);
+    toast("Image generated.", "ok");
+  } catch (err) {
+    imgProgress(null, null);
+    toast("Image generation failed: " + (err?.message || err), "error");
+  } finally {
+    imgBusy = false; $("#cloudRun").disabled = false; icons();
+  }
+}
+
+async function runCloudVideo() {
+  if (imgBusy) return;
+  const provider = $("#vidProvider").value;
+  const target = $("#vidModel").value.trim();
+  const prompt = $("#vidPrompt").value.trim();
+  const token = (($("#vidKey").value || localStorage.getItem(KEYS.vid) || "").trim())
+    || (provider === "hf" ? ($("#hfKey").value || localStorage.getItem(KEYS.hf) || "").trim() : "");
+  if (!token) { toast("Add your video generation API key first.", "warn"); $("#keysBox").open = true; return; }
+  if (!target) { toast(provider === "hf" ? "Enter a model id." : "Enter an endpoint URL.", "warn"); return; }
+  if (!prompt) { toast("Write a prompt first.", "warn"); return; }
+  imgBusy = true; $("#vidRun").disabled = true; resetOutput();
+  try {
+    imgProgress("Rendering video — this can take a few minutes…", 40);
+    const url = provider === "hf" ? `https://router.huggingface.co/hf-inference/models/${target}` : target;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ inputs: prompt, prompt }),
+    });
+    if (!res.ok) throw new Error(await providerError(res));
+    const type = res.headers.get("content-type") || "";
+    if (type.includes("application/json")) {
+      const data = await res.json();
+      const link = data.video_url || data.url || data.output?.[0] || data.output;
+      if (typeof link !== "string") throw new Error("Provider returned JSON without a video URL.");
+      showOutput(link, "video");
+    } else {
+      const blob = await res.blob();
+      outUrl = URL.createObjectURL(blob);
+      showOutput(outUrl, "video");
+    }
+    imgProgress(null, null);
+    toast("Video ready.", "ok");
+  } catch (err) {
+    imgProgress(null, null);
+    toast("Video generation failed: " + (err?.message || err), "error");
+  } finally {
+    imgBusy = false; $("#vidRun").disabled = false; icons();
+  }
+}
+
 $("#imgRun").onclick = runImageTask;
+$("#cloudRun").onclick = runCloudImage;
+$("#vidRun").onclick = runCloudVideo;
 $("#closeImagelab").onclick = closeImagelab;
 $("#imagelabScrim").onclick = closeImagelab;
+
 
 $("#sandboxBtn").onclick = openSandbox;
 $("#imageBtn").onclick = openImagelab;
