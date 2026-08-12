@@ -220,32 +220,104 @@ console.log('sum =', nums.reduce((a, b) => a + b, 0));</textarea>
       <button id="closeImagelab" class="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-white/10"><i data-lucide="x" class="h-4 w-4"></i></button>
     </div>
     <div class="flex-1 overflow-y-auto p-4 space-y-3 text-sm">
-      <p class="text-[11px] leading-relaxed text-slate-500">Runs <span class="font-medium">Transformers.js</span> on WebGPU, 100% in your browser. No server, no upload — models are cached in IndexedDB after the first run.</p>
-      <label class="block space-y-1">
-        <span class="text-xs font-medium text-slate-600 dark:text-slate-300">Task</span>
-        <select id="imgTask" class="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs dark:border-white/10 dark:bg-white/5">
-          <option value="bg">Remove background (RMBG-1.4)</option>
-          <option value="upscale">Upscale 2× (Swin2SR)</option>
-          <option value="depth">Depth map (Depth Anything V2)</option>
-          <option value="caption">Describe image (ViT-GPT2)</option>
-        </select>
-      </label>
-      <label class="block space-y-1">
-        <span class="text-xs font-medium text-slate-600 dark:text-slate-300">Source image</span>
-        <input id="imgFile" type="file" accept="image/*" class="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs file:mr-2 file:rounded-md file:border-0 file:bg-brand-500 file:px-2 file:py-1 file:text-white dark:border-white/10 dark:bg-white/5" />
-      </label>
-      <button id="imgRun" class="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand-500 px-3 py-2 text-xs font-medium text-white hover:bg-brand-600 disabled:opacity-50"><i data-lucide="sparkles" class="h-4 w-4"></i> Generate</button>
+      <div class="grid grid-cols-3 gap-1 rounded-lg bg-slate-100 p-1 text-[11px] font-medium dark:bg-white/5">
+        <button data-mode="local" class="modeTab rounded-md px-2 py-1.5">On-device</button>
+        <button data-mode="cloud" class="modeTab rounded-md px-2 py-1.5">Image gen</button>
+        <button data-mode="video" class="modeTab rounded-md px-2 py-1.5">Video gen</button>
+      </div>
+
+      <details id="keysBox" class="rounded-lg border border-slate-200 p-2 dark:border-white/10">
+        <summary class="cursor-pointer text-xs font-medium text-slate-600 dark:text-slate-300">API keys (stored only in this browser)</summary>
+        <div class="mt-2 space-y-2">
+          <label class="block space-y-1">
+            <span class="text-[11px] text-slate-500">Hugging Face API key (hf_…)</span>
+            <input id="hfKey" type="password" autocomplete="off" placeholder="hf_xxxxxxxx" class="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs dark:border-white/10 dark:bg-white/5" />
+          </label>
+          <label class="block space-y-1">
+            <span class="text-[11px] text-slate-500">Video generation API key</span>
+            <input id="vidKey" type="password" autocomplete="off" placeholder="key for your video API" class="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs dark:border-white/10 dark:bg-white/5" />
+          </label>
+          <div class="flex gap-2">
+            <button id="saveKeys" class="flex-1 rounded-lg bg-brand-500 px-2 py-1.5 text-xs font-medium text-white hover:bg-brand-600">Save keys</button>
+            <button id="clearKeys" class="rounded-lg border border-red-300/60 px-2 py-1.5 text-xs text-red-500 hover:bg-red-500/10 dark:border-red-500/30">Clear</button>
+          </div>
+          <p class="text-[10px] leading-relaxed text-slate-500">Keys never leave your device except in the request to the provider you choose. Cloud generation is the only part of BroAI that touches a network API.</p>
+        </div>
+      </details>
+
+      <!-- On-device panel -->
+      <div id="panelLocal" class="space-y-3">
+        <p class="text-[11px] leading-relaxed text-slate-500">Runs <span class="font-medium">Transformers.js</span> on WebGPU, 100% in your browser. No server, no upload — models are cached in IndexedDB after the first run.</p>
+        <label class="block space-y-1">
+          <span class="text-xs font-medium text-slate-600 dark:text-slate-300">Task</span>
+          <select id="imgTask" class="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs dark:border-white/10 dark:bg-white/5">
+            <option value="bg">Remove background (RMBG-1.4)</option>
+            <option value="upscale">Upscale 2× (Swin2SR)</option>
+            <option value="depth">Depth map (Depth Anything V2)</option>
+            <option value="caption">Describe image (ViT-GPT2)</option>
+          </select>
+        </label>
+        <label class="block space-y-1">
+          <span class="text-xs font-medium text-slate-600 dark:text-slate-300">Source image</span>
+          <input id="imgFile" type="file" accept="image/*" class="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs file:mr-2 file:rounded-md file:border-0 file:bg-brand-500 file:px-2 file:py-1 file:text-white dark:border-white/10 dark:bg-white/5" />
+        </label>
+        <button id="imgRun" class="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand-500 px-3 py-2 text-xs font-medium text-white hover:bg-brand-600 disabled:opacity-50"><i data-lucide="sparkles" class="h-4 w-4"></i> Generate</button>
+      </div>
+
+      <!-- Cloud image panel -->
+      <div id="panelCloud" class="hidden space-y-3">
+        <p class="text-[11px] leading-relaxed text-slate-500">Text-to-image with your own Hugging Face key — FLUX and other diffusion models are far too large for the browser, so they run on the provider you pick.</p>
+        <label class="block space-y-1">
+          <span class="text-xs font-medium text-slate-600 dark:text-slate-300">Model</span>
+          <select id="cloudModel" class="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs dark:border-white/10 dark:bg-white/5">
+            <option value="black-forest-labs/FLUX.1-schnell">FLUX.1 schnell — fast</option>
+            <option value="black-forest-labs/FLUX.1-dev">FLUX.1 dev — high quality</option>
+            <option value="stabilityai/stable-diffusion-xl-base-1.0">Stable Diffusion XL</option>
+            <option value="stabilityai/stable-diffusion-3.5-large">Stable Diffusion 3.5 Large</option>
+            <option value="__custom">Custom model id…</option>
+          </select>
+        </label>
+        <input id="cloudModelCustom" placeholder="owner/model-name" class="hidden w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs dark:border-white/10 dark:bg-white/5" />
+        <label class="block space-y-1">
+          <span class="text-xs font-medium text-slate-600 dark:text-slate-300">Prompt</span>
+          <textarea id="cloudPrompt" rows="3" placeholder="A neon-lit cyberpunk street after rain, cinematic" class="w-full resize-y rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs dark:border-white/10 dark:bg-white/5"></textarea>
+        </label>
+        <button id="cloudRun" class="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand-500 px-3 py-2 text-xs font-medium text-white hover:bg-brand-600 disabled:opacity-50"><i data-lucide="sparkles" class="h-4 w-4"></i> Generate image</button>
+      </div>
+
+      <!-- Video panel -->
+      <div id="panelVideo" class="hidden space-y-3">
+        <p class="text-[11px] leading-relaxed text-slate-500">Text-to-video through an API of your choice. Hugging Face has free-tier text-to-video models; you can also point BroAI at any endpoint that accepts <code>{"inputs": prompt}</code>.</p>
+        <label class="block space-y-1">
+          <span class="text-xs font-medium text-slate-600 dark:text-slate-300">Provider</span>
+          <select id="vidProvider" class="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs dark:border-white/10 dark:bg-white/5">
+            <option value="hf">Hugging Face Inference</option>
+            <option value="custom">Custom endpoint</option>
+          </select>
+        </label>
+        <label class="block space-y-1">
+          <span id="vidTargetLabel" class="text-xs font-medium text-slate-600 dark:text-slate-300">Model id</span>
+          <input id="vidModel" value="Wan-AI/Wan2.1-T2V-1.3B-Diffusers" class="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs dark:border-white/10 dark:bg-white/5" />
+        </label>
+        <label class="block space-y-1">
+          <span class="text-xs font-medium text-slate-600 dark:text-slate-300">Prompt</span>
+          <textarea id="vidPrompt" rows="3" placeholder="A drone shot over snowy mountains at sunrise" class="w-full resize-y rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs dark:border-white/10 dark:bg-white/5"></textarea>
+        </label>
+        <button id="vidRun" class="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand-500 px-3 py-2 text-xs font-medium text-white hover:bg-brand-600 disabled:opacity-50"><i data-lucide="clapperboard" class="h-4 w-4"></i> Generate video</button>
+      </div>
+
       <div id="imgProgress" class="hidden">
         <div class="flex items-center justify-between text-[11px] font-medium text-brand-600 dark:text-brand-300"><span id="imgProgressText">Preparing…</span><span id="imgProgressPct" class="font-mono">0%</span></div>
         <div class="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-brand-200/70 dark:bg-white/10"><div id="imgProgressBar" class="h-full w-0 rounded-full bg-brand-500 transition-all duration-200"></div></div>
       </div>
       <div class="grid grid-cols-2 gap-2">
         <div class="space-y-1"><div class="text-[10px] uppercase tracking-wider text-slate-500">Input</div><div class="grid aspect-square place-items-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5"><img id="imgIn" alt="Selected source image" class="hidden max-h-full max-w-full object-contain" /><span id="imgInEmpty" class="text-[11px] text-slate-400">No image</span></div></div>
-        <div class="space-y-1"><div class="text-[10px] uppercase tracking-wider text-slate-500">Output</div><div class="grid aspect-square place-items-center overflow-hidden rounded-lg border border-slate-200 bg-[url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2216%22 height=%2216%22><rect width=%228%22 height=%228%22 fill=%22%23e2e8f0%22/><rect x=%228%22 y=%228%22 width=%228%22 height=%228%22 fill=%22%23e2e8f0%22/></svg>')] dark:border-white/10"><img id="imgOut" alt="Generated result" class="hidden max-h-full max-w-full object-contain" /><span id="imgOutEmpty" class="text-[11px] text-slate-400">No result</span></div></div>
+        <div class="space-y-1"><div class="text-[10px] uppercase tracking-wider text-slate-500">Output</div><div class="grid aspect-square place-items-center overflow-hidden rounded-lg border border-slate-200 bg-[url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2216%22 height=%2216%22><rect width=%228%22 height=%228%22 fill=%22%23e2e8f0%22/><rect x=%228%22 y=%228%22 width=%228%22 height=%228%22 fill=%22%23e2e8f0%22/></svg>')] dark:border-white/10"><img id="imgOut" alt="Generated result" class="hidden max-h-full max-w-full object-contain" /><video id="vidOut" controls class="hidden max-h-full max-w-full"></video><span id="imgOutEmpty" class="text-[11px] text-slate-400">No result</span></div></div>
       </div>
       <p id="imgText" class="hidden rounded-lg bg-slate-100 p-2 text-xs dark:bg-white/5"></p>
-      <a id="imgDownload" class="hidden inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs hover:bg-slate-100 dark:border-white/10 dark:hover:bg-white/10" download="broai-image.png"><i data-lucide="download" class="h-3.5 w-3.5"></i> Download result</a>
+      <a id="imgDownload" class="hidden inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs hover:bg-slate-100 dark:border-white/10 dark:hover:bg-white/10" download="broai-output"><i data-lucide="download" class="h-3.5 w-3.5"></i> Download result</a>
     </div>
+
   </aside>
   <div id="imagelabScrim" class="fixed inset-0 z-30 hidden bg-black/50"></div>
 </div>
