@@ -69,7 +69,13 @@
   .msg pre code { text-rendering: optimizeSpeed; font-variant-ligatures: none; }
   /* Keep the reading position stable: no browser scroll anchoring fights */
   #chatScroll { overflow-anchor: none; scroll-behavior: auto; overscroll-behavior: contain; }
+  /* Native dropdown popups don't inherit Tailwind dark styles on most platforms */
+  select option, select optgroup { background-color: #ffffff; color: #0f172a; }
+  select optgroup { font-weight: 700; }
+  .dark select option { background-color: #111827; color: #e5e7eb; }
+  .dark select optgroup { background-color: #0b0f17; color: #93b4ff; }
   .reduce-motion * { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+
   @media (prefers-reduced-motion: reduce) { * { animation-duration: .001ms !important; transition-duration: .001ms !important; } }
 </style>
 </head>
