@@ -1,0 +1,6 @@
+{
+  "name": "BroAI - Browser AI Companion",
+  "description": "Private local LLM workspace running open LLMs in-browser with WebGPU and sandbox support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
