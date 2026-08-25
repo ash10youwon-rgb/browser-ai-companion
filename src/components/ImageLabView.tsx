@@ -23,12 +23,20 @@ import {
   Globe,
   Volume2,
   AlertCircle,
+  HardDrive,
+  Trash2,
+  X,
 } from "lucide-react";
 import { WebGpuStats } from "@/types";
 import { TransformersShowcase } from "./TransformersShowcase";
 import {
   generateSmartImage,
   initSmartImageEngine,
+  exportModelCache,
+  downloadModelCache,
+  importModelCache,
+  getModelCacheSize,
+  clearModelCache,
   type SmartImageBackend,
 } from "@/services/imageGeneration";
 import {
@@ -56,8 +64,9 @@ interface GeneratedArtwork {
 export const ImageLabView: React.FC<ImageLabViewProps> = ({ gpuStats }) => {
   const [activeTab, setActiveTab] = useState<ActiveStudioTab>("diffusion");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const cacheFileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Diffusion State
+  // Diffusion State (smart-image-engine)
   const [prompt, setPrompt] = useState(
     "A majestic snow leopard in a bioluminescent mountain forest at dusk, 8k resolution, cinematic lighting, photorealistic",
   );
@@ -67,13 +76,20 @@ export const ImageLabView: React.FC<ImageLabViewProps> = ({ gpuStats }) => {
   const [style, setStyle] = useState("Photorealistic");
   const [aspectRatio, setAspectRatio] = useState<"1:1" | "16:9" | "9:16" | "4:3">("1:1");
   const [seed, setSeed] = useState<number>(428912);
-  const [steps, setSteps] = useState(25);
+  const [steps, setSteps] = useState(1);
   const [guidance, setGuidance] = useState(7.5);
+  const [backendMode, setBackendMode] = useState<"auto" | "webgpu" | "cloud">("auto");
   const [isGenerating, setIsGenerating] = useState(false);
   const [renderTime, setRenderTime] = useState<string>("1.8s");
   const [engineBackend, setEngineBackend] = useState<SmartImageBackend>("uninitialized");
   const [engineProgressStatus, setEngineProgressStatus] = useState<string>("");
   const [generationError, setGenerationError] = useState<string | null>(null);
+
+  // Cache Tools State
+  const [showCacheModal, setShowCacheModal] = useState(false);
+  const [cacheSizeBytes, setCacheSizeBytes] = useState<number | null>(null);
+  const [cacheActionLoading, setCacheActionLoading] = useState(false);
+  const [cacheActionMsg, setCacheActionMsg] = useState<string | null>(null);
 
   // Artworks state
   const [currentArtwork, setCurrentArtwork] = useState<GeneratedArtwork | null>(null);
@@ -81,16 +97,85 @@ export const ImageLabView: React.FC<ImageLabViewProps> = ({ gpuStats }) => {
 
   // Initialize SmartImageEngine once on mount
   useEffect(() => {
+    const force = backendMode === "auto" ? undefined : backendMode;
     initSmartImageEngine((status) => {
       setEngineProgressStatus(status);
-    })
+    }, force)
       .then((backend) => {
         setEngineBackend(backend);
       })
       .catch((err) => {
         console.warn("SmartImageEngine initialization note:", err);
       });
-  }, []);
+  }, [backendMode]);
+
+  // Load cache size when cache modal is opened
+  const refreshCacheSize = async () => {
+    try {
+      const bytes = await getModelCacheSize();
+      setCacheSizeBytes(bytes);
+    } catch {
+      setCacheSizeBytes(null);
+    }
+  };
+
+  const handleExportCache = async () => {
+    setCacheActionLoading(true);
+    setCacheActionMsg("Exporting model cache snapshot...");
+    try {
+      const blob = await exportModelCache();
+      downloadModelCache(blob, "sd-turbo-cache.bin");
+      setCacheActionMsg("Export complete! Snapshot file saved to downloads.");
+      await refreshCacheSize();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setCacheActionMsg(`Export error: ${msg}`);
+    } finally {
+      setCacheActionLoading(false);
+    }
+  };
+
+  const handleImportCacheFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCacheActionLoading(true);
+    setCacheActionMsg("Importing cache snapshot into browser Cache Storage...");
+    try {
+      const res = await importModelCache(file, {
+        onProgress: (done, total) => {
+          setCacheActionMsg(`Importing entry ${done}/${total}...`);
+        },
+      });
+      setCacheActionMsg(
+        `Success! Restored ${res.entriesRestored} entries into "${res.cacheName}".`,
+      );
+      await refreshCacheSize();
+      // Re-initialize engine with cached data
+      await initSmartImageEngine((status) => setEngineProgressStatus(status));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setCacheActionMsg(`Import error: ${msg}`);
+    } finally {
+      setCacheActionLoading(false);
+      if (cacheFileInputRef.current) cacheFileInputRef.current.value = "";
+    }
+  };
+
+  const handleClearCache = async () => {
+    if (!window.confirm("Are you sure you want to clear the local model cache storage?")) return;
+    setCacheActionLoading(true);
+    setCacheActionMsg("Clearing cache...");
+    try {
+      await clearModelCache();
+      setCacheActionMsg("Model cache cleared successfully.");
+      await refreshCacheSize();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setCacheActionMsg(`Clear error: ${msg}`);
+    } finally {
+      setCacheActionLoading(false);
+    }
+  };
 
   // Specific Tool Settings
   const [bgChoice, setBgChoice] = useState<
@@ -183,11 +268,14 @@ export const ImageLabView: React.FC<ImageLabViewProps> = ({ gpuStats }) => {
       const selectedStyleObj = styles.find((s) => s.label === style);
       const fullPrompt = prompt + (selectedStyleObj ? selectedStyleObj.promptAdd : "");
 
+      const force = backendMode === "auto" ? undefined : backendMode;
       const result = await generateSmartImage({
         prompt: fullPrompt,
         width,
         height,
         seed,
+        numInferenceSteps: steps,
+        forceBackend: force,
         onProgress: (status) => {
           setEngineProgressStatus(status);
         },
@@ -346,7 +434,10 @@ export const ImageLabView: React.FC<ImageLabViewProps> = ({ gpuStats }) => {
             }`}
           >
             <Sparkles className="h-3.5 w-3.5" />
-            Flux Diffusion
+            smart-image-engine
+            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-black/20 text-slate-900 font-bold">
+              v1.0
+            </span>
           </button>
 
           <button
@@ -423,281 +514,446 @@ export const ImageLabView: React.FC<ImageLabViewProps> = ({ gpuStats }) => {
       </div>
 
       {activeTab === "diffusion" ? (
-        /* Diffusion Studio (FLUX) */
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 max-w-6xl mx-auto w-full">
-          {/* Controls Column */}
-          <div className="lg:col-span-5 space-y-4">
-            <div className="bg-[#0b1322] border border-[#172740] rounded-2xl p-4 space-y-3.5 shadow-xl">
+        /* Diffusion Studio (smart-image-engine) */
+        <div className="space-y-4 max-w-6xl mx-auto w-full">
+          {/* Smart Image Engine Banner & Cache Controls */}
+          <div className="bg-[#0b1424] border border-[#1b2f4f] rounded-2xl p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-[#10243e] border border-[#234573] flex items-center justify-center text-[#38bdf8] flex-shrink-0">
+                <Sparkles className="h-5 w-5" />
+              </div>
               <div>
-                <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5 uppercase tracking-wider">
-                  <Wand2 className="h-3.5 w-3.5 text-[#38bdf8]" />
-                  Prompt
-                </label>
-                <textarea
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  rows={3}
-                  placeholder="Describe your visual concept..."
-                  className="w-full mt-1.5 p-3 rounded-xl bg-[#070e1a] border border-[#1b3152] focus:border-[#38bdf8] text-xs text-slate-100 outline-none resize-none transition leading-relaxed font-sans placeholder:text-slate-500"
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-400">Negative Prompt</label>
-                <input
-                  type="text"
-                  value={negativePrompt}
-                  onChange={(e) => setNegativePrompt(e.target.value)}
-                  className="w-full mt-1 p-2.5 rounded-xl bg-[#070e1a] border border-[#1b3152] focus:border-[#38bdf8] text-xs text-slate-300 outline-none transition"
-                />
-              </div>
-
-              {/* Style Presets */}
-              <div>
-                <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block mb-1.5">
-                  Artistic Style
-                </label>
-                <div className="grid grid-cols-3 gap-2">
-                  {styles.map((s) => (
-                    <button
-                      key={s.label}
-                      onClick={() => setStyle(s.label)}
-                      className={`p-2 rounded-xl text-xs font-medium border transition cursor-pointer ${
-                        style === s.label
-                          ? "bg-[#10243e] border-[#38bdf8] text-white shadow-sm"
-                          : "bg-[#070e1a] border-[#15273f] text-slate-400 hover:border-slate-500"
-                      }`}
-                    >
-                      {s.label}
-                    </button>
-                  ))}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-bold text-white font-mono">smart-image-engine</span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                    SD-Turbo + WebGPU
+                  </span>
+                  <a
+                    href="https://github.com/chaitanyalp24-gif/smart-image-engine"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-[11px] font-mono text-[#38bdf8] hover:underline"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    github.com/chaitanyalp24-gif/smart-image-engine
+                  </a>
                 </div>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  100% Free Hybrid AI Engine. Runs Xenova/sd-turbo locally via WebGPU, with
+                  automatic fallback to Pollinations.ai cloud API.
+                </p>
               </div>
-
-              {/* Aspect Ratio */}
-              <div>
-                <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block mb-1.5">
-                  Aspect Ratio
-                </label>
-                <div className="grid grid-cols-4 gap-2">
-                  {(["1:1", "16:9", "9:16", "4:3"] as const).map((ratio) => (
-                    <button
-                      key={ratio}
-                      onClick={() => setAspectRatio(ratio)}
-                      className={`p-2 rounded-xl text-xs font-mono font-medium border transition cursor-pointer ${
-                        aspectRatio === ratio
-                          ? "bg-[#10243e] border-[#38bdf8] text-white"
-                          : "bg-[#070e1a] border-[#15273f] text-slate-400 hover:border-slate-500"
-                      }`}
-                    >
-                      {ratio}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Advanced Parameters */}
-              <div className="pt-2 border-t border-[#14233a] grid grid-cols-2 gap-3 text-xs">
-                <div>
-                  <div className="flex justify-between text-slate-400 mb-1">
-                    <span>Inference Steps</span>
-                    <span className="font-mono text-white">{steps}</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="10"
-                    max="50"
-                    value={steps}
-                    onChange={(e) => setSteps(Number(e.target.value))}
-                    className="w-full accent-[#38bdf8] h-1.5 bg-[#14233a] rounded-lg"
-                  />
-                </div>
-
-                <div>
-                  <div className="flex justify-between text-slate-400 mb-1">
-                    <span>CFG Scale</span>
-                    <span className="font-mono text-white">{guidance}</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="1"
-                    max="15"
-                    step="0.5"
-                    value={guidance}
-                    onChange={(e) => setGuidance(Number(e.target.value))}
-                    className="w-full accent-[#38bdf8] h-1.5 bg-[#14233a] rounded-lg"
-                  />
-                </div>
-              </div>
-
-              {/* Generate Button */}
-              <button
-                onClick={handleGenerateDiffusion}
-                disabled={isGenerating}
-                className={`w-full py-3.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition shadow-lg cursor-pointer ${
-                  isGenerating
-                    ? "bg-slate-800 text-slate-400 cursor-not-allowed"
-                    : "bg-gradient-to-r from-[#0284c7] via-[#38bdf8] to-[#0ea5e9] hover:opacity-95 text-slate-950 shadow-[0_0_20px_rgba(56,189,248,0.4)]"
-                }`}
-              >
-                {isGenerating ? (
-                  <>
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                    Synthesizing Image ({engineProgressStatus || "Smart Engine"})...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="h-4 w-4 fill-current" />
-                    Generate AI Artwork
-                  </>
-                )}
-              </button>
             </div>
+
+            <button
+              onClick={() => {
+                setShowCacheModal(true);
+                refreshCacheSize();
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#132238] hover:bg-[#1b3152] text-xs font-semibold text-slate-200 border border-[#23426c] transition cursor-pointer flex-shrink-0"
+            >
+              <HardDrive className="h-3.5 w-3.5 text-[#38bdf8]" />
+              Cache Snapshot Tools
+            </button>
           </div>
 
-          {/* Right Image Canvas */}
-          <div className="lg:col-span-7 space-y-4">
-            <div className="bg-[#0b1322] border border-[#172740] rounded-2xl p-4 flex flex-col items-center justify-center min-h-[440px] relative overflow-hidden shadow-2xl">
-              {isGenerating ? (
-                <div className="flex flex-col items-center gap-4 text-center p-6">
-                  <div className="relative">
-                    <div className="w-16 h-16 rounded-full border-4 border-t-[#38bdf8] border-r-transparent border-b-[#38bdf8] border-l-transparent animate-spin" />
-                    <Sparkles className="h-6 w-6 text-[#38bdf8] absolute inset-0 m-auto animate-pulse" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <div className="text-sm font-bold text-white">
-                      Generating via Smart Image Engine
-                    </div>
-                    <div className="text-xs text-[#38bdf8] font-mono">
-                      {engineProgressStatus || "Initializing neural pipeline..."}
-                    </div>
-                    <div className="text-[11px] text-slate-400 font-mono">
-                      {engineBackend === "webgpu"
-                        ? `Local WebGPU Runtime (${gpuStats.gpuName})`
-                        : "Detecting WebGPU / Cloud Fallback"}
-                    </div>
-                  </div>
-                </div>
-              ) : generationError ? (
-                /* Explicit Error State - Never fallback to stock photo */
-                <div className="flex flex-col items-center justify-center gap-3.5 p-6 text-center max-w-md">
-                  <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 shadow-lg">
-                    <AlertCircle className="h-6 w-6" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <div className="text-sm font-bold text-red-300">Generation Failed</div>
-                    <div className="text-xs text-slate-300 leading-relaxed bg-[#140a0f] p-3 rounded-xl border border-red-900/40 font-mono text-left">
-                      {generationError}
-                    </div>
-                  </div>
-                  <button
-                    onClick={handleGenerateDiffusion}
-                    className="mt-1 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#132238] hover:bg-[#1a2e4c] text-xs font-semibold text-slate-200 border border-[#1f375a] transition cursor-pointer"
-                  >
-                    <RefreshCw className="h-3.5 w-3.5" />
-                    Retry Generation
-                  </button>
-                </div>
-              ) : currentArtwork ? (
-                /* Active Rendered Artwork with Honest Backend Label */
-                <div className="relative group w-full flex flex-col items-center">
-                  <img
-                    src={currentArtwork.url}
-                    alt={currentArtwork.prompt}
-                    className="rounded-xl max-h-[380px] w-auto object-contain shadow-2xl border border-[#1b2e4b]"
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 w-full">
+            {/* Controls Column */}
+            <div className="lg:col-span-5 space-y-4">
+              <div className="bg-[#0b1322] border border-[#172740] rounded-2xl p-4 space-y-3.5 shadow-xl">
+                <div>
+                  <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5 uppercase tracking-wider">
+                    <Wand2 className="h-3.5 w-3.5 text-[#38bdf8]" />
+                    Prompt
+                  </label>
+                  <textarea
+                    value={prompt}
+                    onChange={(e) => setPrompt(e.target.value)}
+                    rows={3}
+                    placeholder="Describe your visual concept..."
+                    className="w-full mt-1.5 p-3 rounded-xl bg-[#070e1a] border border-[#1b3152] focus:border-[#38bdf8] text-xs text-slate-100 outline-none resize-none transition leading-relaxed font-sans placeholder:text-slate-500"
                   />
-                  <div className="w-full flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mt-3 pt-3 border-t border-[#15243b] text-xs text-slate-400">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      {/* Honest Backend Label */}
-                      {currentArtwork.backend === "webgpu" ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-emerald-950/80 text-emerald-300 border border-emerald-800/60">
-                          <Zap className="h-3.5 w-3.5 text-emerald-400" />
-                          Generated locally (WebGPU)
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-sky-950/80 text-sky-300 border border-sky-800/60">
-                          <Globe className="h-3.5 w-3.5 text-sky-400" />
-                          Generated via cloud fallback (Pollinations.ai)
-                        </span>
-                      )}
-                      <span>•</span>
-                      <span className="font-mono text-[#38bdf8]">{currentArtwork.renderTime}</span>
-                      {currentArtwork.seed !== undefined && (
-                        <>
-                          <span>•</span>
-                          <span className="text-slate-400 font-mono">
-                            Seed: {currentArtwork.seed}
-                          </span>
-                        </>
-                      )}
-                    </div>
-                    <a
-                      href={currentArtwork.url}
-                      download={`broai-render-${currentArtwork.seed || Date.now()}.png`}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#121f35] hover:bg-[#182b4a] text-slate-100 font-medium transition cursor-pointer border border-[#1e3458] self-start sm:self-auto"
-                    >
-                      <Download className="h-3.5 w-3.5 text-[#38bdf8]" />
-                      Download HD
-                    </a>
+                </div>
+
+                <div>
+                  <label className="text-xs font-semibold text-slate-400">Negative Prompt</label>
+                  <input
+                    type="text"
+                    value={negativePrompt}
+                    onChange={(e) => setNegativePrompt(e.target.value)}
+                    className="w-full mt-1 p-2.5 rounded-xl bg-[#070e1a] border border-[#1b3152] focus:border-[#38bdf8] text-xs text-slate-300 outline-none transition"
+                  />
+                </div>
+
+                {/* Backend Selection Mode */}
+                <div>
+                  <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block mb-1.5">
+                    Execution Backend
+                  </label>
+                  <div className="grid grid-cols-3 gap-1.5 text-[11px]">
+                    {[
+                      { id: "auto", label: "Auto (WebGPU/Cloud)", icon: Sparkles },
+                      { id: "webgpu", label: "Force WebGPU", icon: Zap },
+                      { id: "cloud", label: "Force Cloud", icon: Globe },
+                    ].map((b) => (
+                      <button
+                        key={b.id}
+                        onClick={() => setBackendMode(b.id as "auto" | "webgpu" | "cloud")}
+                        className={`p-2 rounded-xl border transition flex flex-col items-center gap-1 cursor-pointer font-medium ${
+                          backendMode === b.id
+                            ? "bg-[#10243e] border-[#38bdf8] text-white shadow-sm"
+                            : "bg-[#070e1a] border-[#15273f] text-slate-400 hover:border-slate-500"
+                        }`}
+                      >
+                        <b.icon className="h-3.5 w-3.5 text-[#38bdf8]" />
+                        <span className="truncate text-center">{b.label}</span>
+                      </button>
+                    ))}
                   </div>
                 </div>
-              ) : (
-                /* Initial Idle Canvas */
-                <div className="flex flex-col items-center justify-center gap-3 p-8 text-center text-slate-400">
-                  <div className="w-14 h-14 rounded-2xl bg-[#0e1829] border border-[#182c49] flex items-center justify-center text-[#38bdf8] shadow-inner">
-                    <Wand2 className="h-7 w-7" />
+
+                {/* Style Presets */}
+                <div>
+                  <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block mb-1.5">
+                    Artistic Style
+                  </label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {styles.map((s) => (
+                      <button
+                        key={s.label}
+                        onClick={() => setStyle(s.label)}
+                        className={`p-2 rounded-xl text-xs font-medium border transition cursor-pointer ${
+                          style === s.label
+                            ? "bg-[#10243e] border-[#38bdf8] text-white shadow-sm"
+                            : "bg-[#070e1a] border-[#15273f] text-slate-400 hover:border-slate-500"
+                        }`}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
                   </div>
-                  <div className="space-y-1">
-                    <div className="text-sm font-semibold text-slate-200">
-                      AI Latent Diffusion Canvas
+                </div>
+
+                {/* Aspect Ratio */}
+                <div>
+                  <label className="text-xs font-bold text-slate-300 uppercase tracking-wider block mb-1.5">
+                    Aspect Ratio
+                  </label>
+                  <div className="grid grid-cols-4 gap-2">
+                    {(["1:1", "16:9", "9:16", "4:3"] as const).map((ratio) => (
+                      <button
+                        key={ratio}
+                        onClick={() => setAspectRatio(ratio)}
+                        className={`p-2 rounded-xl text-xs font-mono font-medium border transition cursor-pointer ${
+                          aspectRatio === ratio
+                            ? "bg-[#10243e] border-[#38bdf8] text-white"
+                            : "bg-[#070e1a] border-[#15273f] text-slate-400 hover:border-slate-500"
+                        }`}
+                      >
+                        {ratio}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Advanced Parameters */}
+                <div className="pt-2 border-t border-[#14233a] grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <div className="flex justify-between text-slate-400 mb-1">
+                      <span>Inference Steps (SD-Turbo)</span>
+                      <span className="font-mono text-white">{steps}</span>
                     </div>
-                    <div className="text-xs text-slate-400 max-w-sm leading-relaxed">
-                      Enter your prompt and click <strong>Generate AI Artwork</strong>.
-                      SmartImageEngine executes 100% locally if WebGPU is available, or seamlessly
-                      uses cloud fallback.
+                    <input
+                      type="range"
+                      min="1"
+                      max="4"
+                      value={steps}
+                      onChange={(e) => setSteps(Number(e.target.value))}
+                      className="w-full accent-[#38bdf8] h-1.5 bg-[#14233a] rounded-lg"
+                    />
+                    <span className="text-[10px] text-slate-500">1-step distilled turbo</span>
+                  </div>
+
+                  <div>
+                    <div className="flex justify-between text-slate-400 mb-1">
+                      <span>Random Seed</span>
+                      <button
+                        onClick={() => setSeed(Math.floor(Math.random() * 1000000))}
+                        className="text-[10px] text-[#38bdf8] hover:underline flex items-center gap-0.5"
+                      >
+                        <Dice5 className="h-2.5 w-2.5" /> randomize
+                      </button>
                     </div>
+                    <input
+                      type="number"
+                      value={seed}
+                      onChange={(e) => setSeed(Number(e.target.value))}
+                      className="w-full p-1.5 rounded-lg bg-[#070e1a] border border-[#1b3152] text-xs font-mono text-white outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Generate Button */}
+                <button
+                  onClick={handleGenerateDiffusion}
+                  disabled={isGenerating}
+                  className={`w-full py-3.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition shadow-lg cursor-pointer ${
+                    isGenerating
+                      ? "bg-slate-800 text-slate-400 cursor-not-allowed"
+                      : "bg-gradient-to-r from-[#0284c7] via-[#38bdf8] to-[#0ea5e9] hover:opacity-95 text-slate-950 shadow-[0_0_20px_rgba(56,189,248,0.4)]"
+                  }`}
+                >
+                  {isGenerating ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      Synthesizing Image ({engineProgressStatus || "smart-image-engine"})...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4 fill-current" />
+                      Generate with smart-image-engine
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Right Image Canvas */}
+            <div className="lg:col-span-7 space-y-4">
+              <div className="bg-[#0b1322] border border-[#172740] rounded-2xl p-4 flex flex-col items-center justify-center min-h-[440px] relative overflow-hidden shadow-2xl">
+                {isGenerating ? (
+                  <div className="flex flex-col items-center gap-4 text-center p-6">
+                    <div className="relative">
+                      <div className="w-16 h-16 rounded-full border-4 border-t-[#38bdf8] border-r-transparent border-b-[#38bdf8] border-l-transparent animate-spin" />
+                      <Sparkles className="h-6 w-6 text-[#38bdf8] absolute inset-0 m-auto animate-pulse" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <div className="text-sm font-bold text-white">
+                        Generating via smart-image-engine
+                      </div>
+                      <div className="text-xs text-[#38bdf8] font-mono">
+                        {engineProgressStatus || "Initializing neural pipeline..."}
+                      </div>
+                      <div className="text-[11px] text-slate-400 font-mono">
+                        {engineBackend === "webgpu"
+                          ? `Local WebGPU SD-Turbo (${gpuStats.gpuName})`
+                          : "Cloud Fallback (Pollinations.ai)"}
+                      </div>
+                    </div>
+                  </div>
+                ) : generationError ? (
+                  /* Explicit Error State */
+                  <div className="flex flex-col items-center justify-center gap-3.5 p-6 text-center max-w-md">
+                    <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 shadow-lg">
+                      <AlertCircle className="h-6 w-6" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <div className="text-sm font-bold text-red-300">Generation Failed</div>
+                      <div className="text-xs text-slate-300 leading-relaxed bg-[#140a0f] p-3 rounded-xl border border-red-900/40 font-mono text-left">
+                        {generationError}
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleGenerateDiffusion}
+                      className="mt-1 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#132238] hover:bg-[#1a2e4c] text-xs font-semibold text-slate-200 border border-[#1f375a] transition cursor-pointer"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5" />
+                      Retry Generation
+                    </button>
+                  </div>
+                ) : currentArtwork ? (
+                  /* Active Rendered Artwork with Honest Backend Label */
+                  <div className="relative group w-full flex flex-col items-center">
+                    <img
+                      src={currentArtwork.url}
+                      alt={currentArtwork.prompt}
+                      className="rounded-xl max-h-[380px] w-auto object-contain shadow-2xl border border-[#1b2e4b]"
+                    />
+                    <div className="w-full flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mt-3 pt-3 border-t border-[#15243b] text-xs text-slate-400">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {/* Honest Backend Label */}
+                        {currentArtwork.backend === "webgpu" ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-emerald-950/80 text-emerald-300 border border-emerald-800/60">
+                            <Zap className="h-3.5 w-3.5 text-emerald-400" />
+                            Generated locally (WebGPU SD-Turbo)
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-sky-950/80 text-sky-300 border border-sky-800/60">
+                            <Globe className="h-3.5 w-3.5 text-sky-400" />
+                            Generated via cloud fallback (Pollinations.ai)
+                          </span>
+                        )}
+                        <span>•</span>
+                        <span className="font-mono text-[#38bdf8]">
+                          {currentArtwork.renderTime}
+                        </span>
+                        {currentArtwork.seed !== undefined && (
+                          <>
+                            <span>•</span>
+                            <span className="text-slate-400 font-mono">
+                              Seed: {currentArtwork.seed}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                      <a
+                        href={currentArtwork.url}
+                        download={`smart-image-${currentArtwork.seed || Date.now()}.png`}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#121f35] hover:bg-[#182b4a] text-slate-100 font-medium transition cursor-pointer border border-[#1e3458] self-start sm:self-auto"
+                      >
+                        <Download className="h-3.5 w-3.5 text-[#38bdf8]" />
+                        Download Image
+                      </a>
+                    </div>
+                  </div>
+                ) : (
+                  /* Initial Idle Canvas */
+                  <div className="flex flex-col items-center justify-center gap-3 p-8 text-center text-slate-400">
+                    <div className="w-14 h-14 rounded-2xl bg-[#0e1829] border border-[#182c49] flex items-center justify-center text-[#38bdf8] shadow-inner">
+                      <Wand2 className="h-7 w-7" />
+                    </div>
+                    <div className="space-y-1">
+                      <div className="text-sm font-semibold text-slate-200">
+                        smart-image-engine Canvas
+                      </div>
+                      <div className="text-xs text-slate-400 max-w-sm leading-relaxed">
+                        Enter your prompt and click{" "}
+                        <strong>Generate with smart-image-engine</strong>. Images are generated 100%
+                        locally if WebGPU is available, or seamlessly via Pollinations.ai cloud API.
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* History Gallery */}
+              {recentArtworks.length > 0 && (
+                <div className="bg-[#0b1322] border border-[#172740] rounded-2xl p-4 space-y-2.5 shadow-xl">
+                  <div className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
+                    <span>Recent smart-image-engine Renders</span>
+                    <span className="text-[10px] text-slate-500 font-mono">
+                      {recentArtworks.length} images
+                    </span>
+                  </div>
+                  <div className="flex gap-2.5 overflow-x-auto pb-1 pt-0.5">
+                    {recentArtworks.map((art, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => {
+                          setCurrentArtwork(art);
+                          setGenerationError(null);
+                        }}
+                        className={`flex-shrink-0 w-16 h-16 rounded-xl overflow-hidden border-2 transition cursor-pointer relative group ${
+                          currentArtwork?.url === art.url
+                            ? "border-[#38bdf8] ring-2 ring-[#38bdf8]/40 scale-105"
+                            : "border-[#192b47] hover:border-slate-400 opacity-80 hover:opacity-100"
+                        }`}
+                      >
+                        <img src={art.url} alt="Thumb" className="w-full h-full object-cover" />
+                        <div className="absolute bottom-0 right-0 p-0.5 bg-black/70 rounded-tl">
+                          {art.backend === "webgpu" ? (
+                            <Zap className="h-2.5 w-2.5 text-emerald-400" />
+                          ) : (
+                            <Globe className="h-2.5 w-2.5 text-sky-400" />
+                          )}
+                        </div>
+                      </button>
+                    ))}
                   </div>
                 </div>
               )}
             </div>
+          </div>
 
-            {/* History Gallery */}
-            {recentArtworks.length > 0 && (
-              <div className="bg-[#0b1322] border border-[#172740] rounded-2xl p-4 space-y-2.5 shadow-xl">
-                <div className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
-                  <span>Recent AI Artwork Renders</span>
-                  <span className="text-[10px] text-slate-500 font-mono">
-                    {recentArtworks.length} images
+          {/* Cache Tools Snapshot Modal */}
+          {showCacheModal && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+              <div className="bg-[#0c1424] border border-[#1e3458] rounded-2xl max-w-lg w-full p-5 space-y-4 shadow-2xl">
+                <div className="flex items-center justify-between pb-3 border-b border-[#1b2e4b]">
+                  <div className="flex items-center gap-2">
+                    <HardDrive className="h-5 w-5 text-[#38bdf8]" />
+                    <h3 className="text-sm font-bold text-white">
+                      smart-image-engine Cache Snapshot Manager
+                    </h3>
+                  </div>
+                  <button
+                    onClick={() => setShowCacheModal(false)}
+                    className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-[#14233a] transition"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  On shared machines or ephemeral cloud sessions, local neural models are wiped
+                  between browser refreshes. <strong>smart-image-engine/cache-tools</strong> allows
+                  you to export your downloaded model cache to a single portable{" "}
+                  <code className="text-[#38bdf8] font-mono">.bin</code> file and restore it in
+                  seconds without re-downloading gigabytes of weights over the network.
+                </p>
+
+                <div className="bg-[#070e1a] border border-[#182a44] rounded-xl p-3 flex items-center justify-between">
+                  <span className="text-xs text-slate-400">Current Cache Storage Size:</span>
+                  <span className="text-xs font-mono font-bold text-[#38bdf8]">
+                    {cacheSizeBytes !== null
+                      ? `${(cacheSizeBytes / (1024 * 1024)).toFixed(1)} MB`
+                      : "Calculating..."}
                   </span>
                 </div>
-                <div className="flex gap-2.5 overflow-x-auto pb-1 pt-0.5">
-                  {recentArtworks.map((art, idx) => (
-                    <button
-                      key={idx}
-                      onClick={() => {
-                        setCurrentArtwork(art);
-                        setGenerationError(null);
-                      }}
-                      className={`flex-shrink-0 w-16 h-16 rounded-xl overflow-hidden border-2 transition cursor-pointer relative group ${
-                        currentArtwork?.url === art.url
-                          ? "border-[#38bdf8] ring-2 ring-[#38bdf8]/40 scale-105"
-                          : "border-[#192b47] hover:border-slate-400 opacity-80 hover:opacity-100"
-                      }`}
-                    >
-                      <img src={art.url} alt="Thumb" className="w-full h-full object-cover" />
-                      <div className="absolute bottom-0 right-0 p-0.5 bg-black/70 rounded-tl">
-                        {art.backend === "webgpu" ? (
-                          <Zap className="h-2.5 w-2.5 text-emerald-400" />
-                        ) : (
-                          <Globe className="h-2.5 w-2.5 text-sky-400" />
-                        )}
-                      </div>
-                    </button>
-                  ))}
+
+                {cacheActionMsg && (
+                  <div className="text-xs text-[#38bdf8] bg-[#0f213b] p-2.5 rounded-xl border border-[#1f3a63] font-mono">
+                    {cacheActionMsg}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                  <button
+                    onClick={handleExportCache}
+                    disabled={cacheActionLoading}
+                    className="flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-[#142947] hover:bg-[#1c3963] text-xs font-semibold text-white border border-[#234674] transition cursor-pointer"
+                  >
+                    <Download className="h-4 w-4 text-[#38bdf8]" />
+                    Export Snapshot (.bin)
+                  </button>
+
+                  <button
+                    onClick={() => cacheFileInputRef.current?.click()}
+                    disabled={cacheActionLoading}
+                    className="flex items-center justify-center gap-2 px-3.5 py-2.5 rounded-xl bg-[#142947] hover:bg-[#1c3963] text-xs font-semibold text-white border border-[#234674] transition cursor-pointer"
+                  >
+                    <Upload className="h-4 w-4 text-emerald-400" />
+                    Import Snapshot (.bin)
+                  </button>
+                  <input
+                    ref={cacheFileInputRef}
+                    type="file"
+                    accept=".bin"
+                    onChange={handleImportCacheFile}
+                    className="hidden"
+                  />
+                </div>
+
+                <div className="pt-2 border-t border-[#1b2e4b] flex items-center justify-between">
+                  <button
+                    onClick={handleClearCache}
+                    disabled={cacheActionLoading}
+                    className="inline-flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 font-medium transition cursor-pointer"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Clear Cache Bucket
+                  </button>
+
+                  <button
+                    onClick={() => setShowCacheModal(false)}
+                    className="px-4 py-1.5 rounded-xl bg-[#14233a] hover:bg-[#1b3152] text-xs font-semibold text-slate-200 transition cursor-pointer"
+                  >
+                    Close
+                  </button>
                 </div>
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       ) : (
         /* Real Transformers.js & WebGPU Pipeline View (bg-remove, super-resolution-js, captionify) */

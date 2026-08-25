@@ -76,13 +76,36 @@ export const AboutView: React.FC = () => {
           </div>
         </div>
 
-        {/* 3 Open Source Vision Integrations */}
+        {/* 4 Open Source Vision Integrations */}
         <div className="space-y-3">
           <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
             <ImageIcon className="h-4 w-4 text-[#38bdf8]" />
-            Integrated Open-Source Computer Vision Repositories
+            Integrated Open-Source AI & Vision Engines
           </h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* smart-image-engine */}
+            <div className="bg-[#0e1626] border border-[#1c2a40] hover:border-[#38bdf8]/60 rounded-2xl p-4 space-y-2.5 transition">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-[#38bdf8]">smart-image-engine</span>
+                <a
+                  href="https://github.com/chaitanyalp24-gif/smart-image-engine"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-slate-400 hover:text-white"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              </div>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                By Chaitanya. Free hybrid AI text-to-image generator — runs Stable Diffusion Turbo
+                locally in-browser via WebGPU, with seamless cloud fallback and cache snapshot
+                tools.
+              </p>
+              <div className="text-[10px] font-mono text-slate-400 pt-1">
+                Repo: github.com/chaitanyalp24-gif/smart-image-engine
+              </div>
+            </div>
+
             {/* bg-remove */}
             <div className="bg-[#0e1626] border border-[#1c2a40] hover:border-[#e879f9]/50 rounded-2xl p-4 space-y-2.5 transition">
               <div className="flex items-center justify-between">
@@ -90,7 +113,7 @@ export const AboutView: React.FC = () => {
                 <a
                   href="https://github.com/addyosmani/bg-remove"
                   target="_blank"
-                  rel="noreferrer"
+                  rel="noopener noreferrer"
                   className="text-slate-400 hover:text-white"
                 >
                   <ExternalLink className="h-3.5 w-3.5" />
@@ -112,7 +135,7 @@ export const AboutView: React.FC = () => {
                 <a
                   href="https://github.com/josephrocca/super-resolution-js"
                   target="_blank"
-                  rel="noreferrer"
+                  rel="noopener noreferrer"
                   className="text-slate-400 hover:text-white"
                 >
                   <ExternalLink className="h-3.5 w-3.5" />
@@ -134,7 +157,7 @@ export const AboutView: React.FC = () => {
                 <a
                   href="https://github.com/jaggedsoft/captionify"
                   target="_blank"
-                  rel="noreferrer"
+                  rel="noopener noreferrer"
                   className="text-slate-400 hover:text-white"
                 >
                   <ExternalLink className="h-3.5 w-3.5" />
