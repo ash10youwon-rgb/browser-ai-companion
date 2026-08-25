@@ -4,10 +4,10 @@ export const INITIAL_MODELS: ModelInfo[] = [
   // --- Micro & Instant Models ---
   {
     id: "smollm2-135m",
-    name: "SmolLM2 135M",
+    name: "SmolLM2-135M",
     family: "Hugging Face",
     category: "Micro & Instant Models",
-    dropdownLabel: "SmolLM2 135M — instant · ~270 MB",
+    dropdownLabel: "SmolLM2-135M — instant · ~270 MB",
     size: "270 MB",
     vram: "350 MB",
     speed: "112.0 tok/s",
@@ -20,10 +20,10 @@ export const INITIAL_MODELS: ModelInfo[] = [
   },
   {
     id: "smollm2-360m",
-    name: "SmolLM2 360M",
+    name: "SmolLM2-360M",
     family: "Hugging Face",
     category: "Micro & Instant Models",
-    dropdownLabel: "SmolLM2 360M — better chat · ~380 MB",
+    dropdownLabel: "SmolLM2-360M — better chat · ~380 MB",
     size: "380 MB",
     vram: "480 MB",
     speed: "96.5 tok/s",

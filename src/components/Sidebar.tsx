@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import {
   MessageSquare,
   Image as ImageIcon,
+  Film,
   Cpu,
   CodeXml,
   Settings as SettingsIcon,
@@ -43,9 +44,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const [showRecentChats, setShowRecentChats] = useState(true);
 
-  const navItems: { id: TabType; label: string; icon: React.ReactNode }[] = [
+  const navItems: { id: TabType; label: string; icon: React.ReactNode; badge?: string }[] = [
     { id: "chat", label: "Chat", icon: <MessageSquare className="h-4 w-4" /> },
     { id: "image-lab", label: "Image Lab", icon: <ImageIcon className="h-4 w-4" /> },
+    { id: "video-lab", label: "Video Studio", icon: <Film className="h-4 w-4" />, badge: "FREE" },
     { id: "models", label: "Models", icon: <Cpu className="h-4 w-4" /> },
     { id: "code-sandbox", label: "Code Sandbox", icon: <CodeXml className="h-4 w-4" /> },
     { id: "settings", label: "Settings", icon: <SettingsIcon className="h-4 w-4" /> },
@@ -118,16 +120,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 key={item.id}
                 id={`nav-item-${item.id}`}
                 onClick={() => handleTabClick(item.id)}
-                className={`flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition-all text-left cursor-pointer ${
+                className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all text-left cursor-pointer ${
                   isActive
                     ? "bg-[#132037] text-white shadow-sm border border-[#233555]/80 font-semibold"
                     : "text-slate-400 hover:text-slate-200 hover:bg-[#0e1626]"
                 }`}
               >
-                <span className={`${isActive ? "text-[#38bdf8]" : "text-slate-400"}`}>
-                  {item.icon}
-                </span>
-                <span>{item.label}</span>
+                <div className="flex items-center gap-3">
+                  <span className={`${isActive ? "text-[#38bdf8]" : "text-slate-400"}`}>
+                    {item.icon}
+                  </span>
+                  <span>{item.label}</span>
+                </div>
+                {item.badge && (
+                  <span className="text-[9px] font-bold font-mono px-1.5 py-0.2 rounded-full bg-emerald-950/80 border border-emerald-700/50 text-emerald-400">
+                    {item.badge}
+                  </span>
+                )}
               </button>
             );
           })}

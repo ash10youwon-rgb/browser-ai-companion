@@ -191,7 +191,10 @@ export const HardwareMonitorCard: React.FC<HardwareMonitorCardProps> = ({
         <div>
           <div className="text-[11px] font-semibold text-white">GPU</div>
           <div className="text-[10px] text-slate-300 font-mono">
-            {detectedGpuName || stats.gpuName || "NVIDIA RTX 3050 Laptop GPU"}
+            {stats.deviceName ||
+              detectedGpuName ||
+              stats.gpuName ||
+              "Apple Silicon / NVIDIA / AMD GPU"}
           </div>
         </div>
 

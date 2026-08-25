@@ -187,6 +187,22 @@ export const AboutView: React.FC = () => {
           </div>
         </div>
 
+        {/* 100% Free Guarantee & Pricing Commitment */}
+        <div className="bg-[#0e1626] border border-emerald-800/40 rounded-2xl p-5 space-y-3 shadow-lg">
+          <div className="flex items-center gap-2 text-sm font-bold text-emerald-400">
+            <CheckCircle className="h-5 w-5 text-emerald-400" />
+            <span>100% Free Core Features Guarantee</span>
+          </div>
+          <p className="text-xs text-slate-300 leading-relaxed">
+            All core features available in BroAI today—including the{" "}
+            <strong>AI Video Studio</strong>, <strong>Image Lab Vision Suite</strong>,{" "}
+            <strong>Multi-Model Chat</strong>, <strong>Search Grounding</strong>, and{" "}
+            <strong>Code Sandbox</strong>—are completely 100% free to use with zero subscriptions,
+            paywalls, or credit limitations. Any future premium monetization will be evaluated
+            strictly for separate, net-new enterprise features.
+          </p>
+        </div>
+
         {/* Technical Architecture Overview */}
         <div className="bg-[#0e1626] border border-[#1c2a40] rounded-2xl p-5 space-y-3">
           <h3 className="text-sm font-bold text-white flex items-center gap-2">

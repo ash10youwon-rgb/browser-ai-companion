@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   Sparkles,
   Download,
@@ -21,10 +21,16 @@ import {
   ExternalLink,
   ShieldCheck,
   Globe,
+  Volume2,
+  AlertCircle,
 } from "lucide-react";
 import { WebGpuStats } from "@/types";
 import { TransformersShowcase } from "./TransformersShowcase";
-import { generateAiImage } from "@/services/imageGeneration";
+import {
+  generateSmartImage,
+  initSmartImageEngine,
+  type SmartImageBackend,
+} from "@/services/imageGeneration";
 import {
   generateAiCaption,
   generateAiDepthMap,
@@ -39,6 +45,14 @@ interface ImageLabViewProps {
 
 type ActiveStudioTab = "diffusion" | "bg-removal" | "upscaling" | "depth-map" | "captioning";
 
+interface GeneratedArtwork {
+  url: string;
+  prompt: string;
+  backend: "webgpu" | "cloud";
+  seed?: number;
+  renderTime: string;
+}
+
 export const ImageLabView: React.FC<ImageLabViewProps> = ({ gpuStats }) => {
   const [activeTab, setActiveTab] = useState<ActiveStudioTab>("diffusion");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -52,14 +66,31 @@ export const ImageLabView: React.FC<ImageLabViewProps> = ({ gpuStats }) => {
   );
   const [style, setStyle] = useState("Photorealistic");
   const [aspectRatio, setAspectRatio] = useState<"1:1" | "16:9" | "9:16" | "4:3">("1:1");
-  const [aiModel, setAiModel] = useState<
-    "flux" | "turbo" | "flux-realism" | "flux-anime" | "flux-3d"
-  >("flux");
   const [seed, setSeed] = useState<number>(428912);
   const [steps, setSteps] = useState(25);
   const [guidance, setGuidance] = useState(7.5);
   const [isGenerating, setIsGenerating] = useState(false);
   const [renderTime, setRenderTime] = useState<string>("1.8s");
+  const [engineBackend, setEngineBackend] = useState<SmartImageBackend>("uninitialized");
+  const [engineProgressStatus, setEngineProgressStatus] = useState<string>("");
+  const [generationError, setGenerationError] = useState<string | null>(null);
+
+  // Artworks state
+  const [currentArtwork, setCurrentArtwork] = useState<GeneratedArtwork | null>(null);
+  const [recentArtworks, setRecentArtworks] = useState<GeneratedArtwork[]>([]);
+
+  // Initialize SmartImageEngine once on mount
+  useEffect(() => {
+    initSmartImageEngine((status) => {
+      setEngineProgressStatus(status);
+    })
+      .then((backend) => {
+        setEngineBackend(backend);
+      })
+      .catch((err) => {
+        console.warn("SmartImageEngine initialization note:", err);
+      });
+  }, []);
 
   // Specific Tool Settings
   const [bgChoice, setBgChoice] = useState<
@@ -68,6 +99,7 @@ export const ImageLabView: React.FC<ImageLabViewProps> = ({ gpuStats }) => {
   const [upscaleFactor, setUpscaleFactor] = useState<2 | 4>(2);
   const [captionPrefix, setCaptionPrefix] = useState<string>("a photo of");
   const [copiedCaption, setCopiedCaption] = useState(false);
+  const [isSpeakingCaption, setIsSpeakingCaption] = useState(false);
 
   // Active Transformers.js processing
   const [sourceImage, setSourceImage] = useState<string>(
@@ -81,17 +113,6 @@ export const ImageLabView: React.FC<ImageLabViewProps> = ({ gpuStats }) => {
     progress: 0,
     message: "",
   });
-
-  const [currentImage, setCurrentImage] = useState<string>(
-    "https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=1024&q=85",
-  );
-
-  const [generatedImages, setGeneratedImages] = useState<string[]>([
-    "https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&w=1024&q=85",
-    "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1024&q=85",
-    "https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=1024&q=85",
-    "https://images.unsplash.com/photo-1607604276583-eef5d076aa5f?auto=format&fit=crop&w=1024&q=85",
-  ]);
 
   const sampleLibrary = [
     {
@@ -115,32 +136,26 @@ export const ImageLabView: React.FC<ImageLabViewProps> = ({ gpuStats }) => {
   const styles = [
     {
       label: "Photorealistic",
-      model: "flux-realism" as const,
       promptAdd: ", ultra-realistic photography, 8k, highly detailed",
     },
     {
       label: "Anime / Manga",
-      model: "flux-anime" as const,
       promptAdd: ", anime aesthetic, Makoto Shinkai style, vivid colors",
     },
     {
       label: "Cyberpunk",
-      model: "flux" as const,
       promptAdd: ", cyberpunk neon city, futuristic synthwave, volumetric lighting",
     },
     {
       label: "3D Render",
-      model: "flux-3d" as const,
       promptAdd: ", octane 3D render, Pixar style, raytracing reflections",
     },
     {
       label: "Oil Painting",
-      model: "flux" as const,
       promptAdd: ", classical oil on canvas, textured brushstrokes, fine art",
     },
     {
       label: "Turbo Fast",
-      model: "turbo" as const,
       promptAdd: ", sharp focus, dynamic composition",
     },
   ];
@@ -148,10 +163,11 @@ export const ImageLabView: React.FC<ImageLabViewProps> = ({ gpuStats }) => {
   const handleGenerateDiffusion = async () => {
     if (!prompt.trim() || isGenerating) return;
     setIsGenerating(true);
+    setGenerationError(null);
     const start = performance.now();
 
-    let width = 768;
-    let height = 768;
+    let width = 1024;
+    let height = 1024;
     if (aspectRatio === "16:9") {
       width = 1024;
       height = 576;
@@ -159,31 +175,44 @@ export const ImageLabView: React.FC<ImageLabViewProps> = ({ gpuStats }) => {
       width = 576;
       height = 1024;
     } else if (aspectRatio === "4:3") {
-      width = 800;
-      height = 600;
+      width = 1024;
+      height = 768;
     }
 
     try {
       const selectedStyleObj = styles.find((s) => s.label === style);
       const fullPrompt = prompt + (selectedStyleObj ? selectedStyleObj.promptAdd : "");
 
-      const imageUrl = await generateAiImage({
+      const result = await generateSmartImage({
         prompt: fullPrompt,
         width,
         height,
         seed,
-        model: aiModel,
-        enhance: true,
+        onProgress: (status) => {
+          setEngineProgressStatus(status);
+        },
       });
 
       const elapsed = ((performance.now() - start) / 1000).toFixed(1);
       setRenderTime(`${elapsed}s`);
-      setGeneratedImages((prev) => [imageUrl, ...prev.slice(0, 11)]);
-      setCurrentImage(imageUrl);
-    } catch {
-      const fallbackUrl = `https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=${width}&q=80`;
-      setGeneratedImages((prev) => [fallbackUrl, ...prev]);
-      setCurrentImage(fallbackUrl);
+
+      const artwork: GeneratedArtwork = {
+        url: result.url,
+        prompt: fullPrompt,
+        backend: result.backend,
+        seed: result.seed ?? seed,
+        renderTime: `${elapsed}s`,
+      };
+
+      setCurrentArtwork(artwork);
+      setRecentArtworks((prev) => [artwork, ...prev.slice(0, 11)]);
+    } catch (err: unknown) {
+      console.error("SmartImageEngine error:", err);
+      const errorMessage =
+        err instanceof Error
+          ? err.message
+          : "Failed to generate image. Please check your network or try a different prompt.";
+      setGenerationError(errorMessage);
     } finally {
       setIsGenerating(false);
     }
@@ -245,6 +274,18 @@ export const ImageLabView: React.FC<ImageLabViewProps> = ({ gpuStats }) => {
     }
   };
 
+  const handleSpeakCaption = (text: string) => {
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1.0;
+      utterance.onstart = () => setIsSpeakingCaption(true);
+      utterance.onend = () => setIsSpeakingCaption(false);
+      utterance.onerror = () => setIsSpeakingCaption(false);
+      window.speechSynthesis.speak(utterance);
+    }
+  };
+
   const handleCopyCaption = () => {
     if (generatedCaption) {
       navigator.clipboard.writeText(generatedCaption);
@@ -274,11 +315,13 @@ export const ImageLabView: React.FC<ImageLabViewProps> = ({ gpuStats }) => {
       {/* Top Transformers.js Showcase Carousel */}
       <div className="max-w-6xl mx-auto w-full">
         <TransformersShowcase
-          onSelectFeature={(feat) => {
+          onSelectFeature={(feat, customImg) => {
             setActiveTab(feat as ActiveStudioTab);
             setProcessedImage(null);
             setGeneratedCaption(null);
-            if (feat === "bg-removal") {
+            if (customImg) {
+              setSourceImage(customImg);
+            } else if (feat === "bg-removal") {
               setSourceImage(sampleLibrary[0]!.url);
             } else if (feat === "upscaling") {
               setSourceImage(sampleLibrary[1]!.url);
@@ -418,10 +461,7 @@ export const ImageLabView: React.FC<ImageLabViewProps> = ({ gpuStats }) => {
                   {styles.map((s) => (
                     <button
                       key={s.label}
-                      onClick={() => {
-                        setStyle(s.label);
-                        setAiModel(s.model);
-                      }}
+                      onClick={() => setStyle(s.label)}
                       className={`p-2 rounded-xl text-xs font-medium border transition cursor-pointer ${
                         style === s.label
                           ? "bg-[#10243e] border-[#38bdf8] text-white shadow-sm"
@@ -503,7 +543,7 @@ export const ImageLabView: React.FC<ImageLabViewProps> = ({ gpuStats }) => {
                 {isGenerating ? (
                   <>
                     <RefreshCw className="h-4 w-4 animate-spin" />
-                    Synthesizing Latents (WGSL WebGPU)...
+                    Synthesizing Image ({engineProgressStatus || "Smart Engine"})...
                   </>
                 ) : (
                   <>
@@ -519,70 +559,144 @@ export const ImageLabView: React.FC<ImageLabViewProps> = ({ gpuStats }) => {
           <div className="lg:col-span-7 space-y-4">
             <div className="bg-[#0b1322] border border-[#172740] rounded-2xl p-4 flex flex-col items-center justify-center min-h-[440px] relative overflow-hidden shadow-2xl">
               {isGenerating ? (
-                <div className="flex flex-col items-center gap-4 text-center">
+                <div className="flex flex-col items-center gap-4 text-center p-6">
                   <div className="relative">
                     <div className="w-16 h-16 rounded-full border-4 border-t-[#38bdf8] border-r-transparent border-b-[#38bdf8] border-l-transparent animate-spin" />
                     <Sparkles className="h-6 w-6 text-[#38bdf8] absolute inset-0 m-auto animate-pulse" />
                   </div>
-                  <div className="space-y-1">
+                  <div className="space-y-1.5">
                     <div className="text-sm font-bold text-white">
-                      Executing Neural Latent Diffusion
+                      Generating via Smart Image Engine
                     </div>
-                    <div className="text-xs text-slate-400 font-mono">
-                      Running on {gpuStats.gpuName}
+                    <div className="text-xs text-[#38bdf8] font-mono">
+                      {engineProgressStatus || "Initializing neural pipeline..."}
+                    </div>
+                    <div className="text-[11px] text-slate-400 font-mono">
+                      {engineBackend === "webgpu"
+                        ? `Local WebGPU Runtime (${gpuStats.gpuName})`
+                        : "Detecting WebGPU / Cloud Fallback"}
                     </div>
                   </div>
                 </div>
-              ) : (
+              ) : generationError ? (
+                /* Explicit Error State - Never fallback to stock photo */
+                <div className="flex flex-col items-center justify-center gap-3.5 p-6 text-center max-w-md">
+                  <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 shadow-lg">
+                    <AlertCircle className="h-6 w-6" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="text-sm font-bold text-red-300">Generation Failed</div>
+                    <div className="text-xs text-slate-300 leading-relaxed bg-[#140a0f] p-3 rounded-xl border border-red-900/40 font-mono text-left">
+                      {generationError}
+                    </div>
+                  </div>
+                  <button
+                    onClick={handleGenerateDiffusion}
+                    className="mt-1 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#132238] hover:bg-[#1a2e4c] text-xs font-semibold text-slate-200 border border-[#1f375a] transition cursor-pointer"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Retry Generation
+                  </button>
+                </div>
+              ) : currentArtwork ? (
+                /* Active Rendered Artwork with Honest Backend Label */
                 <div className="relative group w-full flex flex-col items-center">
                   <img
-                    src={currentImage}
-                    alt="AI Render"
+                    src={currentArtwork.url}
+                    alt={currentArtwork.prompt}
                     className="rounded-xl max-h-[380px] w-auto object-contain shadow-2xl border border-[#1b2e4b]"
                   />
-                  <div className="w-full flex items-center justify-between mt-3 pt-3 border-t border-[#15243b] text-xs text-slate-400">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-[#38bdf8]">Rendered in {renderTime}</span>
+                  <div className="w-full flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mt-3 pt-3 border-t border-[#15243b] text-xs text-slate-400">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* Honest Backend Label */}
+                      {currentArtwork.backend === "webgpu" ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-emerald-950/80 text-emerald-300 border border-emerald-800/60">
+                          <Zap className="h-3.5 w-3.5 text-emerald-400" />
+                          Generated locally (WebGPU)
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-sky-950/80 text-sky-300 border border-sky-800/60">
+                          <Globe className="h-3.5 w-3.5 text-sky-400" />
+                          Generated via cloud fallback (Pollinations.ai)
+                        </span>
+                      )}
                       <span>•</span>
-                      <span className="text-slate-400">Seed: {seed}</span>
+                      <span className="font-mono text-[#38bdf8]">{currentArtwork.renderTime}</span>
+                      {currentArtwork.seed !== undefined && (
+                        <>
+                          <span>•</span>
+                          <span className="text-slate-400 font-mono">
+                            Seed: {currentArtwork.seed}
+                          </span>
+                        </>
+                      )}
                     </div>
                     <a
-                      href={currentImage}
-                      download={`broai-render-${seed}.jpg`}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#121f35] hover:bg-[#182b4a] text-slate-100 font-medium transition cursor-pointer border border-[#1e3458]"
+                      href={currentArtwork.url}
+                      download={`broai-render-${currentArtwork.seed || Date.now()}.png`}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#121f35] hover:bg-[#182b4a] text-slate-100 font-medium transition cursor-pointer border border-[#1e3458] self-start sm:self-auto"
                     >
                       <Download className="h-3.5 w-3.5 text-[#38bdf8]" />
                       Download HD
                     </a>
                   </div>
                 </div>
+              ) : (
+                /* Initial Idle Canvas */
+                <div className="flex flex-col items-center justify-center gap-3 p-8 text-center text-slate-400">
+                  <div className="w-14 h-14 rounded-2xl bg-[#0e1829] border border-[#182c49] flex items-center justify-center text-[#38bdf8] shadow-inner">
+                    <Wand2 className="h-7 w-7" />
+                  </div>
+                  <div className="space-y-1">
+                    <div className="text-sm font-semibold text-slate-200">
+                      AI Latent Diffusion Canvas
+                    </div>
+                    <div className="text-xs text-slate-400 max-w-sm leading-relaxed">
+                      Enter your prompt and click <strong>Generate AI Artwork</strong>.
+                      SmartImageEngine executes 100% locally if WebGPU is available, or seamlessly
+                      uses cloud fallback.
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
 
             {/* History Gallery */}
-            <div className="bg-[#0b1322] border border-[#172740] rounded-2xl p-4 space-y-2.5 shadow-xl">
-              <div className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
-                <span>Recent Local AI Renders</span>
-                <span className="text-[10px] text-slate-500 font-mono">
-                  {generatedImages.length} images
-                </span>
+            {recentArtworks.length > 0 && (
+              <div className="bg-[#0b1322] border border-[#172740] rounded-2xl p-4 space-y-2.5 shadow-xl">
+                <div className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
+                  <span>Recent AI Artwork Renders</span>
+                  <span className="text-[10px] text-slate-500 font-mono">
+                    {recentArtworks.length} images
+                  </span>
+                </div>
+                <div className="flex gap-2.5 overflow-x-auto pb-1 pt-0.5">
+                  {recentArtworks.map((art, idx) => (
+                    <button
+                      key={idx}
+                      onClick={() => {
+                        setCurrentArtwork(art);
+                        setGenerationError(null);
+                      }}
+                      className={`flex-shrink-0 w-16 h-16 rounded-xl overflow-hidden border-2 transition cursor-pointer relative group ${
+                        currentArtwork?.url === art.url
+                          ? "border-[#38bdf8] ring-2 ring-[#38bdf8]/40 scale-105"
+                          : "border-[#192b47] hover:border-slate-400 opacity-80 hover:opacity-100"
+                      }`}
+                    >
+                      <img src={art.url} alt="Thumb" className="w-full h-full object-cover" />
+                      <div className="absolute bottom-0 right-0 p-0.5 bg-black/70 rounded-tl">
+                        {art.backend === "webgpu" ? (
+                          <Zap className="h-2.5 w-2.5 text-emerald-400" />
+                        ) : (
+                          <Globe className="h-2.5 w-2.5 text-sky-400" />
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="flex gap-2.5 overflow-x-auto pb-1 pt-0.5">
-                {generatedImages.map((img, idx) => (
-                  <button
-                    key={idx}
-                    onClick={() => setCurrentImage(img)}
-                    className={`flex-shrink-0 w-16 h-16 rounded-xl overflow-hidden border-2 transition cursor-pointer ${
-                      currentImage === img
-                        ? "border-[#38bdf8] ring-2 ring-[#38bdf8]/40 scale-105"
-                        : "border-[#192b47] hover:border-slate-400 opacity-80 hover:opacity-100"
-                    }`}
-                  >
-                    <img src={img} alt="Thumb" className="w-full h-full object-cover" />
-                  </button>
-                ))}
-              </div>
-            </div>
+            )}
           </div>
         </div>
       ) : (
@@ -917,31 +1031,46 @@ export const ImageLabView: React.FC<ImageLabViewProps> = ({ gpuStats }) => {
                     </div>
                   )}
 
-                  {/* Caption Result Card with Copy Button */}
+                  {/* Caption Result Card with Copy & Audio Button */}
                   {generatedCaption && (
-                    <div className="w-full p-3 rounded-xl bg-[#0e192c] border border-[#1b2f4f] flex items-center justify-between gap-3">
+                    <div className="w-full p-3 rounded-xl bg-[#0e192c] border border-[#1b2f4f] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg">
                       <div className="flex items-center gap-2 flex-1">
                         <Eye className="h-4 w-4 text-[#ec4899] flex-shrink-0" />
                         <p className="text-xs text-slate-200 font-medium italic">
                           “{generatedCaption}”
                         </p>
                       </div>
-                      <button
-                        onClick={handleCopyCaption}
-                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#162742] hover:bg-[#1e3559] text-xs text-slate-200 border border-[#23406a] transition cursor-pointer flex-shrink-0"
-                      >
-                        {copiedCaption ? (
-                          <>
-                            <Check className="h-3 w-3 text-emerald-400" />
-                            <span className="text-emerald-400 text-[11px]">Copied!</span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="h-3 w-3 text-slate-400" />
-                            <span className="text-[11px]">Copy Caption</span>
-                          </>
-                        )}
-                      </button>
+                      <div className="flex items-center gap-1.5 self-end sm:self-auto flex-shrink-0">
+                        <button
+                          onClick={() => handleSpeakCaption(generatedCaption)}
+                          className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs border transition cursor-pointer ${
+                            isSpeakingCaption
+                              ? "bg-[#ec4899] text-white border-[#ec4899] animate-pulse"
+                              : "bg-[#162742] hover:bg-[#1e3559] text-slate-300 border-[#23406a]"
+                          }`}
+                          title="Speak caption aloud"
+                        >
+                          <Volume2 className="h-3 w-3" />
+                          <span className="text-[11px]">Listen</span>
+                        </button>
+
+                        <button
+                          onClick={handleCopyCaption}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#162742] hover:bg-[#1e3559] text-xs text-slate-200 border border-[#23406a] transition cursor-pointer"
+                        >
+                          {copiedCaption ? (
+                            <>
+                              <Check className="h-3 w-3 text-emerald-400" />
+                              <span className="text-emerald-400 text-[11px]">Copied!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="h-3 w-3 text-slate-400" />
+                              <span className="text-[11px]">Copy</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
                     </div>
                   )}
 

@@ -6,7 +6,8 @@ import {
   ThumbsDown,
   Copy,
   Check,
-  CodeXml,
+  FileCode,
+  Terminal,
   Globe,
   Image as ImageIcon,
   Lock,
@@ -23,6 +24,7 @@ import { QUICK_SUGGESTIONS, KNOWLEDGE_BASE_RESPONSES } from "@/data/mockData";
 import { HardwareMonitorCard } from "./HardwareMonitorCard";
 import { CodeSandboxCard } from "./CodeSandboxCard";
 import { SearchGroundingBanner } from "./SearchGroundingBanner";
+import { MarkdownRenderer } from "./MarkdownRenderer";
 
 interface ChatViewProps {
   messages: ChatMessage[];
@@ -317,7 +319,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   )}
                   {msg.webSearchUsed && (
                     <div className="inline-flex items-center gap-1 text-[10px] text-[#38bdf8] bg-blue-950/60 px-2 py-0.5 rounded-full border border-blue-800/40 mb-1.5">
-                      <Globe className="h-3 w-3" /> Web search simulated
+                      <Globe className="h-3 w-3" /> Google Search Grounding Active
                     </div>
                   )}
                   <p className="whitespace-pre-wrap">{msg.content}</p>
@@ -329,9 +331,25 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 id={`assistant-message-${msg.id}`}
                 className="bg-[#0f1726] border border-[#1c293f] rounded-2xl p-4 text-slate-200 shadow-md space-y-3.5 text-sm leading-relaxed"
               >
+                {/* Mode Label */}
+                <div className="flex items-center justify-between">
+                  {msg.modelUsed === "live-search-grounded" ||
+                  (msg.sources && msg.sources.length > 0) ? (
+                    <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-[#38bdf8] bg-blue-950/70 px-2.5 py-1 rounded-lg border border-blue-800/50">
+                      <Globe className="h-3.5 w-3.5 text-[#38bdf8]" />
+                      <span>Live web result</span>
+                    </div>
+                  ) : (
+                    <div className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-400 bg-[#121c2d] px-2.5 py-0.5 rounded-lg border border-[#1e2e47]">
+                      <Lock className="h-3 w-3 text-emerald-400" />
+                      <span>Local private response</span>
+                    </div>
+                  )}
+                </div>
+
                 <div className="prose prose-invert max-w-none text-slate-200 text-sm">
-                  {/* Render content cleanly with code block syntax highlighting support */}
-                  <MessageBody content={msg.content} onRunInSandbox={onOpenCodeSandbox} />
+                  {/* Render content cleanly with markdown, LaTeX math, and code block syntax support */}
+                  <MarkdownRenderer content={msg.content} onRunInSandbox={onOpenCodeSandbox} />
                 </div>
 
                 {/* Google Search Grounding Sources */}
@@ -418,7 +436,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
         {isStreaming && (
           <div className="bg-[#0f1726] border border-[#1c293f] rounded-2xl p-4 text-slate-200 shadow-md space-y-3.5 text-sm">
             <div className="prose prose-invert max-w-none text-slate-200 text-sm">
-              <MessageBody
+              <MarkdownRenderer
                 content={streamingContent || "Thinking..."}
                 onRunInSandbox={onOpenCodeSandbox}
               />
@@ -536,27 +554,31 @@ export const ChatView: React.FC<ChatViewProps> = ({
               <button
                 id="btn-insert-code"
                 onClick={handleInsertCodeTemplate}
-                title="Insert Python/JS Code Template"
-                className="p-1.5 rounded-lg bg-[#121c2d] hover:bg-[#1a2840] text-slate-300 hover:text-white border border-[#1e2d45] transition text-xs font-mono flex items-center gap-1 cursor-pointer"
+                title="Insert Code Snippet / Template"
+                className="p-1.5 rounded-lg bg-[#121c2d] hover:bg-[#1a2840] text-slate-300 hover:text-[#38bdf8] border border-[#1e2d45] transition text-xs flex items-center gap-1 cursor-pointer"
               >
-                <CodeXml className="h-3.5 w-3.5" />
+                <FileCode className="h-3.5 w-3.5" />
               </button>
 
               {/* Code Sandbox Quick Launcher Button */}
               <button
                 id="btn-open-code-sandbox"
                 onClick={() => onOpenCodeSandbox(inputText)}
-                title="Open in Code Sandbox"
-                className="p-1.5 rounded-lg bg-[#121c2d] hover:bg-[#1a2840] text-slate-300 hover:text-white border border-[#1e2d45] transition text-xs font-mono flex items-center gap-1 cursor-pointer"
+                title="Run in Code Sandbox"
+                className="p-1.5 rounded-lg bg-[#121c2d] hover:bg-[#1a2840] text-[#38bdf8] hover:text-white border border-[#1e2d45] hover:border-[#38bdf8]/50 transition text-xs flex items-center gap-1 cursor-pointer shadow-sm"
               >
-                <CodeXml className="h-3.5 w-3.5" />
+                <Terminal className="h-3.5 w-3.5 text-[#38bdf8]" />
               </button>
 
-              {/* Simulated Web Search Button */}
+              {/* Google Search Grounding Button */}
               <button
                 id="btn-toggle-web-search"
                 onClick={() => setWebSearchActive(!webSearchActive)}
-                title="Simulate Local Web Search Augmentation"
+                title={
+                  webSearchActive
+                    ? "Google Search Grounding: ON (Click to disable)"
+                    : "Google Search Grounding: OFF (Click to enable live web search)"
+                }
                 className={`p-1.5 rounded-lg border transition cursor-pointer ${
                   webSearchActive
                     ? "bg-blue-900/60 text-[#38bdf8] border-blue-500/50"
@@ -608,88 +630,3 @@ export const ChatView: React.FC<ChatViewProps> = ({
     </div>
   );
 };
-
-// Component to parse & render text, markdown headers, bold, tables, and code snippets cleanly
-function MessageBody({
-  content,
-  onRunInSandbox,
-}: {
-  content: string;
-  onRunInSandbox?: (code: string) => void;
-}) {
-  const [copiedCodeIdx, setCopiedCodeIdx] = useState<number | null>(null);
-
-  // Check if content contains markdown code blocks
-  if (!content.includes("```")) {
-    return <div className="whitespace-pre-wrap leading-relaxed">{content}</div>;
-  }
-
-  const parts = content.split(/(```[\s\S]*?```)/g);
-
-  const copyCode = (code: string, idx: number) => {
-    navigator.clipboard.writeText(code);
-    setCopiedCodeIdx(idx);
-    setTimeout(() => setCopiedCodeIdx(null), 2000);
-  };
-
-  return (
-    <div className="space-y-3">
-      {parts.map((part, index) => {
-        if (part.startsWith("```")) {
-          const match = part.match(/```(\w+)?\n([\s\S]*?)```/);
-          const lang = match?.[1] || "text";
-          const code = match?.[2] || part.slice(3, -3);
-
-          return (
-            <div
-              key={index}
-              className="rounded-xl overflow-hidden border border-[#20304a] bg-[#090e18] my-2.5 shadow-inner"
-            >
-              {/* Code Header Bar */}
-              <div className="flex items-center justify-between px-3.5 py-1.5 bg-[#121c2d] border-b border-[#1f2e47] text-xs text-slate-400 font-mono">
-                <span className="uppercase text-[11px] font-semibold text-[#38bdf8]">{lang}</span>
-                <div className="flex items-center gap-2">
-                  {onRunInSandbox && (
-                    <button
-                      onClick={() => onRunInSandbox(code)}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-950/70 hover:bg-blue-900/80 text-[#38bdf8] text-[11px] transition"
-                    >
-                      <Sparkles className="h-3 w-3" />
-                      Run in Sandbox
-                    </button>
-                  )}
-                  <button
-                    onClick={() => copyCode(code, index)}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-[#1b283f] hover:bg-[#233555] text-slate-300 text-[11px] transition"
-                  >
-                    {copiedCodeIdx === index ? (
-                      <>
-                        <Check className="h-3 w-3 text-green-400" />
-                        Copied
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="h-3 w-3" />
-                        Copy
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-              {/* Code text */}
-              <pre className="p-3.5 overflow-x-auto text-xs font-mono text-slate-200 leading-relaxed bg-[#080d16]">
-                <code>{code}</code>
-              </pre>
-            </div>
-          );
-        }
-
-        return (
-          <div key={index} className="whitespace-pre-wrap leading-relaxed">
-            {part}
-          </div>
-        );
-      })}
-    </div>
-  );
-}

@@ -1,770 +1,1603 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en" class="dark">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>BroAI — Private Local LLMs in Your Browser</title>
-<meta name="description" content="BroAI runs open LLMs 100% locally in your browser with WebGPU. No servers, no tracking, full privacy." />
-<link rel="icon" href="/favicon.ico" />
-<script src="https://cdn.tailwindcss.com?plugins=typography"></script>
-<script>
-  tailwind.config = {
-    darkMode: 'class',
-    theme: {
-      extend: {
-        fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'], mono: ['JetBrains Mono', 'ui-monospace', 'monospace'] },
-        colors: {
-          brand: { 50:'#eef6ff',100:'#d9ecff',200:'#bcdcff',300:'#8ec6ff',400:'#59a5ff',500:'#3282f6',600:'#1e63db',700:'#1a4fb0',800:'#1b448b',900:'#1b3b70' }
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BroAI — Private Local LLMs in Your Browser</title>
+    <meta
+      name="description"
+      content="BroAI runs open LLMs 100% locally in your browser with WebGPU. No servers, no tracking, full privacy."
+    />
+    <link rel="icon" href="/favicon.ico" />
+    <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ["Inter", "system-ui", "sans-serif"],
+              mono: ["JetBrains Mono", "ui-monospace", "monospace"],
+            },
+            colors: {
+              brand: {
+                50: "#eef6ff",
+                100: "#d9ecff",
+                200: "#bcdcff",
+                300: "#8ec6ff",
+                400: "#59a5ff",
+                500: "#3282f6",
+                600: "#1e63db",
+                700: "#1a4fb0",
+                800: "#1b448b",
+                900: "#1b3b70",
+              },
+            },
+            keyframes: {
+              fadeup: {
+                "0%": { opacity: 0, transform: "translateY(6px)" },
+                "100%": { opacity: 1, transform: "none" },
+              },
+              pulseline: { "0%,100%": { opacity: 0.35 }, "50%": { opacity: 1 } },
+            },
+            animation: {
+              fadeup: "fadeup .25s ease-out both",
+              pulseline: "pulseline 1.4s ease-in-out infinite",
+            },
+          },
         },
-        keyframes: {
-          fadeup: { '0%': { opacity: 0, transform: 'translateY(6px)' }, '100%': { opacity: 1, transform: 'none' } },
-          pulseline: { '0%,100%': { opacity: .35 }, '50%': { opacity: 1 } }
-        },
-        animation: { fadeup: 'fadeup .25s ease-out both', pulseline: 'pulseline 1.4s ease-in-out infinite' }
+      };
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css"
+    />
+    <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+    <script src="https://unpkg.com/lucide@0.451.0/dist/umd/lucide.js"></script>
+    <style>
+      html,
+      body {
+        height: 100%;
       }
-    }
-  }
-</script>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/atom-one-dark.min.css" />
-<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
-<script src="https://unpkg.com/lucide@0.451.0/dist/umd/lucide.js"></script>
-<style>
-  html, body { height: 100%; }
-  ::-webkit-scrollbar { width: 10px; height: 10px; }
-  ::-webkit-scrollbar-thumb { background: rgba(120,130,150,.35); border-radius: 99px; }
-  ::-webkit-scrollbar-track { background: transparent; }
-  .msg pre { background:#282c34; border-radius:.75rem; padding:0; overflow:hidden; }
-  .msg pre code { display:block; padding:1rem; overflow-x:auto; font-family:'JetBrains Mono',monospace; font-size:.82rem; line-height:1.55; }
-  .msg :not(pre) > code { background: rgba(125,135,160,.18); padding:.12rem .35rem; border-radius:.35rem; font-family:'JetBrains Mono',monospace; font-size:.85em; }
-  .msg p { margin:.5rem 0; }
-  .msg ul { list-style: disc; margin:.5rem 0 .5rem 1.25rem; }
-  .msg ol { list-style: decimal; margin:.5rem 0 .5rem 1.25rem; }
-  .msg h1,.msg h2,.msg h3 { font-weight:700; margin:.85rem 0 .4rem; }
-  .msg h1{font-size:1.25rem}.msg h2{font-size:1.12rem}.msg h3{font-size:1rem}
-  .msg table { width:100%; border-collapse:collapse; margin:.6rem 0; font-size:.86rem; }
-  .msg th,.msg td { border:1px solid rgba(125,135,160,.3); padding:.35rem .5rem; }
-  .msg blockquote { border-left:3px solid rgba(125,135,160,.5); padding-left:.75rem; opacity:.85; margin:.5rem 0; }
-  .msg a { color:#59a5ff; text-decoration: underline; }
-  .code-wrap { position:relative; margin:.75rem 0; border-radius:.75rem; overflow:hidden; border:1px solid rgba(125,135,160,.25); }
-  .code-bar { display:flex; align-items:center; justify-content:space-between; gap:.5rem; background:#21252b; padding:.35rem .5rem .35rem .75rem; font-size:.7rem; letter-spacing:.04em; text-transform:uppercase; color:#9aa4b8; font-family:'JetBrains Mono',monospace; }
-  .code-bar button { display:inline-flex; align-items:center; gap:.3rem; font-size:.68rem; text-transform:none; letter-spacing:0; padding:.2rem .5rem; border-radius:.4rem; background:rgba(255,255,255,.07); color:#dbe2f0; }
-  .code-bar button:hover { background:rgba(255,255,255,.15); }
-  .cursor-blink::after { content:'▋'; margin-left:2px; animation: pulseline 1.1s infinite; }
-  textarea { field-sizing: content; }
-  /* Text rendering tuned for fluid streaming */
-  body, .msg {
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    text-rendering: optimizeLegibility;
-    font-synthesis: none;
-    font-variant-ligatures: none;
-    font-kerning: normal;
-  }
-  .msg { text-wrap: pretty; overflow-wrap: anywhere; backface-visibility: hidden; transform: translateZ(0); }
-  .msg pre code { text-rendering: optimizeSpeed; font-variant-ligatures: none; }
-  /* Keep the reading position stable: no browser scroll anchoring fights */
-  #chatScroll { overflow-anchor: none; scroll-behavior: auto; overscroll-behavior: contain; }
-  /* Native dropdown popups don't inherit Tailwind dark styles on most platforms */
-  select option, select optgroup { background-color: #ffffff; color: #0f172a; }
-  select optgroup { font-weight: 700; }
-  .dark select option { background-color: #111827; color: #e5e7eb; }
-  .dark select optgroup { background-color: #0b0f17; color: #93b4ff; }
-  .reduce-motion * { animation-duration: .001ms !important; transition-duration: .001ms !important; }
+      ::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: rgba(120, 130, 150, 0.35);
+        border-radius: 99px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .msg pre {
+        background: #282c34;
+        border-radius: 0.75rem;
+        padding: 0;
+        overflow: hidden;
+      }
+      .msg pre code {
+        display: block;
+        padding: 1rem;
+        overflow-x: auto;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.82rem;
+        line-height: 1.55;
+      }
+      .msg :not(pre) > code {
+        background: rgba(125, 135, 160, 0.18);
+        padding: 0.12rem 0.35rem;
+        border-radius: 0.35rem;
+        font-family: "JetBrains Mono", monospace;
+        font-size: 0.85em;
+      }
+      .msg p {
+        margin: 0.5rem 0;
+      }
+      .msg ul {
+        list-style: disc;
+        margin: 0.5rem 0 0.5rem 1.25rem;
+      }
+      .msg ol {
+        list-style: decimal;
+        margin: 0.5rem 0 0.5rem 1.25rem;
+      }
+      .msg h1,
+      .msg h2,
+      .msg h3 {
+        font-weight: 700;
+        margin: 0.85rem 0 0.4rem;
+      }
+      .msg h1 {
+        font-size: 1.25rem;
+      }
+      .msg h2 {
+        font-size: 1.12rem;
+      }
+      .msg h3 {
+        font-size: 1rem;
+      }
+      .msg table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 0.6rem 0;
+        font-size: 0.86rem;
+      }
+      .msg th,
+      .msg td {
+        border: 1px solid rgba(125, 135, 160, 0.3);
+        padding: 0.35rem 0.5rem;
+      }
+      .msg blockquote {
+        border-left: 3px solid rgba(125, 135, 160, 0.5);
+        padding-left: 0.75rem;
+        opacity: 0.85;
+        margin: 0.5rem 0;
+      }
+      .msg a {
+        color: #59a5ff;
+        text-decoration: underline;
+      }
+      .code-wrap {
+        position: relative;
+        margin: 0.75rem 0;
+        border-radius: 0.75rem;
+        overflow: hidden;
+        border: 1px solid rgba(125, 135, 160, 0.25);
+      }
+      .code-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        background: #21252b;
+        padding: 0.35rem 0.5rem 0.35rem 0.75rem;
+        font-size: 0.7rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #9aa4b8;
+        font-family: "JetBrains Mono", monospace;
+      }
+      .code-bar button {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        font-size: 0.68rem;
+        text-transform: none;
+        letter-spacing: 0;
+        padding: 0.2rem 0.5rem;
+        border-radius: 0.4rem;
+        background: rgba(255, 255, 255, 0.07);
+        color: #dbe2f0;
+      }
+      .code-bar button:hover {
+        background: rgba(255, 255, 255, 0.15);
+      }
+      .cursor-blink::after {
+        content: "▋";
+        margin-left: 2px;
+        animation: pulseline 1.1s infinite;
+      }
+      textarea {
+        field-sizing: content;
+      }
+      /* Text rendering tuned for fluid streaming */
+      body,
+      .msg {
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        text-rendering: optimizeLegibility;
+        font-synthesis: none;
+        font-variant-ligatures: none;
+        font-kerning: normal;
+      }
+      .msg {
+        text-wrap: pretty;
+        overflow-wrap: anywhere;
+        backface-visibility: hidden;
+        transform: translateZ(0);
+      }
+      .msg pre code {
+        text-rendering: optimizeSpeed;
+        font-variant-ligatures: none;
+      }
+      /* Keep the reading position stable: no browser scroll anchoring fights */
+      #chatScroll {
+        overflow-anchor: none;
+        scroll-behavior: auto;
+        overscroll-behavior: contain;
+      }
+      /* Native dropdown popups don't inherit Tailwind dark styles on most platforms */
+      select option,
+      select optgroup {
+        background-color: #ffffff;
+        color: #0f172a;
+      }
+      select optgroup {
+        font-weight: 700;
+      }
+      .dark select option {
+        background-color: #111827;
+        color: #e5e7eb;
+      }
+      .dark select optgroup {
+        background-color: #0b0f17;
+        color: #93b4ff;
+      }
+      .reduce-motion * {
+        animation-duration: 0.001ms !important;
+        transition-duration: 0.001ms !important;
+      }
 
-  @media (prefers-reduced-motion: reduce) { * { animation-duration: .001ms !important; transition-duration: .001ms !important; } }
-</style>
-</head>
-<body class="bg-slate-50 text-slate-900 dark:bg-[#0b0f17] dark:text-slate-100 font-sans antialiased">
-
-<div class="flex h-screen w-screen overflow-hidden">
-
-  <!-- Sidebar -->
-  <aside id="sidebar" class="fixed inset-y-0 left-0 z-40 w-72 -translate-x-full transform border-r border-slate-200 bg-white transition-transform duration-300 dark:border-white/10 dark:bg-[#0d121c] lg:relative lg:translate-x-0 flex flex-col">
-    <div class="flex items-center justify-between px-4 h-16 border-b border-slate-200 dark:border-white/10">
-      <div class="flex items-center gap-2">
-        <div class="grid h-8 w-8 place-items-center rounded-lg bg-brand-500 text-white font-bold">B</div>
-        <div>
-          <div class="text-sm font-semibold leading-none">BroAI</div>
-          <div class="text-[10px] uppercase tracking-wider text-slate-500">local · private</div>
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          animation-duration: 0.001ms !important;
+          transition-duration: 0.001ms !important;
+        }
+      }
+    </style>
+  </head>
+  <body
+    class="bg-slate-50 text-slate-900 dark:bg-[#0b0f17] dark:text-slate-100 font-sans antialiased"
+  >
+    <div class="flex h-screen w-screen overflow-hidden">
+      <!-- Sidebar -->
+      <aside
+        id="sidebar"
+        class="fixed inset-y-0 left-0 z-40 w-72 -translate-x-full transform border-r border-slate-200 bg-white transition-transform duration-300 dark:border-white/10 dark:bg-[#0d121c] lg:relative lg:translate-x-0 flex flex-col"
+      >
+        <div
+          class="flex items-center justify-between px-4 h-16 border-b border-slate-200 dark:border-white/10"
+        >
+          <div class="flex items-center gap-2">
+            <div
+              class="grid h-8 w-8 place-items-center rounded-lg bg-brand-500 text-white font-bold"
+            >
+              B
+            </div>
+            <div>
+              <div class="text-sm font-semibold leading-none">BroAI</div>
+              <div class="text-[10px] uppercase tracking-wider text-slate-500">local · private</div>
+            </div>
+          </div>
+          <button
+            id="closeSidebar"
+            class="lg:hidden rounded-md p-1.5 hover:bg-slate-100 dark:hover:bg-white/10"
+          >
+            <i data-lucide="x" class="h-4 w-4"></i>
+          </button>
         </div>
-      </div>
-      <button id="closeSidebar" class="lg:hidden rounded-md p-1.5 hover:bg-slate-100 dark:hover:bg-white/10"><i data-lucide="x" class="h-4 w-4"></i></button>
-    </div>
-    <div class="p-3">
-      <button id="newChat" class="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-500 px-3 py-2.5 text-sm font-medium text-white hover:bg-brand-600 transition">
-        <i data-lucide="plus" class="h-4 w-4"></i> New chat
-      </button>
-    </div>
-    <div class="px-4 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">History</div>
-    <div id="historyList" class="flex-1 overflow-y-auto px-2 pb-3 space-y-1"></div>
-    <div class="border-t border-slate-200 px-3 py-3 text-[11px] text-slate-500 dark:border-white/10 space-y-2.5">
-      <div>
-        <div class="flex items-center justify-between">
-          <label for="smoothRange" class="font-medium text-slate-600 dark:text-slate-300">Streaming smoothness</label>
-          <span id="smoothVal" class="font-mono">—</span>
+        <div class="p-3">
+          <button
+            id="newChat"
+            class="flex w-full items-center justify-center gap-2 rounded-xl bg-brand-500 px-3 py-2.5 text-sm font-medium text-white hover:bg-brand-600 transition"
+          >
+            <i data-lucide="plus" class="h-4 w-4"></i> New chat
+          </button>
         </div>
-        <input id="smoothRange" type="range" min="0" max="100" step="1" class="mt-1.5 w-full accent-brand-500" />
-        <div class="flex justify-between text-[10px] text-slate-400"><span>Smoothest</span><span>Instant</span></div>
-      </div>
-      <label class="flex items-center justify-between gap-2">
-        <span class="font-medium text-slate-600 dark:text-slate-300">Reduce motion</span>
-        <input id="reduceMotion" type="checkbox" class="h-4 w-4 accent-brand-500" />
-      </label>
-      <div class="grid grid-cols-2 gap-2 pt-0.5">
-        <button id="clearChat" class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-2 py-1.5 hover:bg-slate-100 dark:border-white/10 dark:hover:bg-white/10"><i data-lucide="eraser" class="h-3.5 w-3.5"></i> Clear chat</button>
-        <button id="clearHistory" class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-red-300/60 px-2 py-1.5 text-red-500 hover:bg-red-500/10 dark:border-red-500/30"><i data-lucide="trash-2" class="h-3.5 w-3.5"></i> Clear all</button>
-      </div>
-    </div>
-    <div class="border-t border-slate-200 p-3 text-[11px] text-slate-500 dark:border-white/10 space-y-1">
-      <div class="flex items-center justify-between"><span>WebGPU</span><span id="gpuStat" class="font-mono">checking…</span></div>
-      <div class="flex items-center justify-between"><span>JS heap</span><span id="ramStat" class="font-mono">—</span></div>
-      <div class="flex items-center justify-between"><span>Speed</span><span id="tpsStat" class="font-mono">—</span></div>
-    </div>
-  </aside>
-  <div id="scrim" class="fixed inset-0 z-30 hidden bg-black/50 lg:hidden"></div>
-
-  <!-- Main -->
-  <div class="flex min-w-0 flex-1 flex-col">
-    <header class="flex h-16 shrink-0 items-center gap-2 border-b border-slate-200 bg-white/80 px-3 backdrop-blur dark:border-white/10 dark:bg-[#0b0f17]/80">
-      <button id="openSidebar" class="lg:hidden rounded-md p-2 hover:bg-slate-100 dark:hover:bg-white/10"><i data-lucide="menu" class="h-5 w-5"></i></button>
-      <div class="min-w-0 flex-1 flex items-center gap-2">
-        <select id="modelSelect" class="min-w-0 max-w-[52vw] truncate rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs sm:text-sm dark:border-white/10 dark:bg-white/5"></select>
-        <button id="loadBtn" class="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-2 text-xs sm:text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50">
-          <i data-lucide="cpu" class="h-4 w-4"></i><span id="loadBtnText">Load</span>
-        </button>
-      </div>
-      <button id="imageBtn" title="Image Lab (local Transformers.js)" class="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-white/10"><i data-lucide="image" class="h-5 w-5"></i></button>
-      <button id="sandboxBtn" title="JavaScript sandbox" class="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-white/10"><i data-lucide="terminal" class="h-5 w-5"></i></button>
-      <button id="themeBtn" title="Toggle theme" class="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-white/10"><i data-lucide="sun-moon" class="h-5 w-5"></i></button>
-    </header>
-
-    <div id="progressBanner" class="hidden border-b border-brand-200/60 bg-brand-50 px-4 py-2.5 dark:border-brand-900/40 dark:bg-brand-900/20">
-      <div class="flex items-center justify-between text-xs font-medium text-brand-800 dark:text-brand-200">
-        <span id="progressText">Preparing…</span><span id="progressPct" class="font-mono">0%</span>
-      </div>
-      <div class="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-brand-200/70 dark:bg-white/10">
-        <div id="progressBar" class="h-full w-0 rounded-full bg-brand-500 transition-all duration-200"></div>
-      </div>
-    </div>
-
-    <main id="chatScroll" class="flex-1 overflow-y-auto">
-      <div id="chatInner" class="mx-auto w-full max-w-3xl px-4 py-6 space-y-5"></div>
-    </main>
-
-    <footer class="shrink-0 border-t border-slate-200 bg-white/80 p-3 backdrop-blur dark:border-white/10 dark:bg-[#0b0f17]/80">
-      <div class="mx-auto max-w-3xl">
-        <div class="flex items-end gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm dark:border-white/10 dark:bg-white/5">
-          <textarea id="input" rows="1" placeholder="Ask BroAI anything… (runs on your GPU)" class="max-h-40 flex-1 resize-none bg-transparent px-2 py-2 text-sm outline-none placeholder:text-slate-400"></textarea>
-          <button id="stopBtn" class="hidden rounded-xl bg-red-500/90 p-2.5 text-white hover:bg-red-500"><i data-lucide="square" class="h-4 w-4"></i></button>
-          <button id="sendBtn" class="rounded-xl bg-brand-500 p-2.5 text-white hover:bg-brand-600 disabled:opacity-40"><i data-lucide="arrow-up" class="h-4 w-4"></i></button>
+        <div class="px-4 pb-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+          History
         </div>
-        <p class="mt-2 text-center text-[11px] text-slate-500">Everything runs locally in your browser. Nothing is uploaded.</p>
-        <p class="mt-1 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
-          <button data-info="about" class="hover:text-brand-500 hover:underline">About us</button>
-          <button data-info="help" class="hover:text-brand-500 hover:underline">Help</button>
-          <button data-info="readme" class="hover:text-brand-500 hover:underline">Read me</button>
-          <button data-info="license" class="hover:text-brand-500 hover:underline">License</button>
-          <span>© 2026 Chaitanya Lalit Patil — All rights reserved.</span>
-        </p>
-      </div>
-    </footer>
-  </div>
+        <div id="historyList" class="flex-1 overflow-y-auto px-2 pb-3 space-y-1"></div>
+        <div
+          class="border-t border-slate-200 px-3 py-3 text-[11px] text-slate-500 dark:border-white/10 space-y-2.5"
+        >
+          <div>
+            <div class="flex items-center justify-between">
+              <label for="smoothRange" class="font-medium text-slate-600 dark:text-slate-300"
+                >Streaming smoothness</label
+              >
+              <span id="smoothVal" class="font-mono">—</span>
+            </div>
+            <input
+              id="smoothRange"
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              class="mt-1.5 w-full accent-brand-500"
+            />
+            <div class="flex justify-between text-[10px] text-slate-400">
+              <span>Smoothest</span><span>Instant</span>
+            </div>
+          </div>
+          <label class="flex items-center justify-between gap-2">
+            <span class="font-medium text-slate-600 dark:text-slate-300">Reduce motion</span>
+            <input id="reduceMotion" type="checkbox" class="h-4 w-4 accent-brand-500" />
+          </label>
+          <div class="grid grid-cols-2 gap-2 pt-0.5">
+            <button
+              id="clearChat"
+              class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-2 py-1.5 hover:bg-slate-100 dark:border-white/10 dark:hover:bg-white/10"
+            >
+              <i data-lucide="eraser" class="h-3.5 w-3.5"></i> Clear chat
+            </button>
+            <button
+              id="clearHistory"
+              class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-red-300/60 px-2 py-1.5 text-red-500 hover:bg-red-500/10 dark:border-red-500/30"
+            >
+              <i data-lucide="trash-2" class="h-3.5 w-3.5"></i> Clear all
+            </button>
+          </div>
+        </div>
+        <div
+          class="border-t border-slate-200 p-3 text-[11px] text-slate-500 dark:border-white/10 space-y-1"
+        >
+          <div class="flex items-center justify-between">
+            <span>WebGPU</span><span id="gpuStat" class="font-mono">checking…</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span>JS heap</span><span id="ramStat" class="font-mono">—</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span>Speed</span><span id="tpsStat" class="font-mono">—</span>
+          </div>
+        </div>
+      </aside>
+      <div id="scrim" class="fixed inset-0 z-30 hidden bg-black/50 lg:hidden"></div>
 
-  <!-- Sandbox drawer -->
-  <aside id="sandbox" class="fixed inset-y-0 right-0 z-40 flex w-full max-w-md translate-x-full flex-col border-l border-slate-200 bg-white transition-transform duration-300 dark:border-white/10 dark:bg-[#0d121c]">
-    <div class="flex h-16 items-center justify-between border-b border-slate-200 px-4 dark:border-white/10">
-      <div class="flex items-center gap-2 text-sm font-semibold"><i data-lucide="terminal" class="h-4 w-4"></i> JS Sandbox</div>
-      <div class="flex items-center gap-1">
-        <button id="runCode" class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-emerald-600"><i data-lucide="play" class="h-3.5 w-3.5"></i> Run</button>
-        <button id="killCode" class="hidden inline-flex items-center gap-1.5 rounded-lg bg-red-500 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-red-600"><i data-lucide="square" class="h-3.5 w-3.5"></i> Stop</button>
-        <button id="clearConsole" class="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-white/10" title="Clear console"><i data-lucide="eraser" class="h-4 w-4"></i></button>
-        <button id="closeSandbox" class="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-white/10"><i data-lucide="x" class="h-4 w-4"></i></button>
+      <!-- Main -->
+      <div class="flex min-w-0 flex-1 flex-col">
+        <header
+          class="flex h-16 shrink-0 items-center gap-2 border-b border-slate-200 bg-white/80 px-3 backdrop-blur dark:border-white/10 dark:bg-[#0b0f17]/80"
+        >
+          <button
+            id="openSidebar"
+            class="lg:hidden rounded-md p-2 hover:bg-slate-100 dark:hover:bg-white/10"
+          >
+            <i data-lucide="menu" class="h-5 w-5"></i>
+          </button>
+          <div class="min-w-0 flex-1 flex items-center gap-2">
+            <select
+              id="modelSelect"
+              class="min-w-0 max-w-[52vw] truncate rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs sm:text-sm dark:border-white/10 dark:bg-white/5"
+            ></select>
+            <button
+              id="loadBtn"
+              class="shrink-0 inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-2 text-xs sm:text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+            >
+              <i data-lucide="cpu" class="h-4 w-4"></i><span id="loadBtnText">Load</span>
+            </button>
+          </div>
+          <button
+            id="imageBtn"
+            title="Image Lab (local Transformers.js)"
+            class="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-white/10"
+          >
+            <i data-lucide="image" class="h-5 w-5"></i>
+          </button>
+          <button
+            id="sandboxBtn"
+            title="JavaScript sandbox"
+            class="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-white/10"
+          >
+            <i data-lucide="terminal" class="h-5 w-5"></i>
+          </button>
+          <button
+            id="themeBtn"
+            title="Toggle theme"
+            class="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-white/10"
+          >
+            <i data-lucide="sun-moon" class="h-5 w-5"></i>
+          </button>
+        </header>
+
+        <div
+          id="progressBanner"
+          class="hidden border-b border-brand-200/60 bg-brand-50 px-4 py-2.5 dark:border-brand-900/40 dark:bg-brand-900/20"
+        >
+          <div
+            class="flex items-center justify-between text-xs font-medium text-brand-800 dark:text-brand-200"
+          >
+            <span id="progressText">Preparing…</span
+            ><span id="progressPct" class="font-mono">0%</span>
+          </div>
+          <div
+            class="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-brand-200/70 dark:bg-white/10"
+          >
+            <div
+              id="progressBar"
+              class="h-full w-0 rounded-full bg-brand-500 transition-all duration-200"
+            ></div>
+          </div>
+        </div>
+
+        <main id="chatScroll" class="flex-1 overflow-y-auto">
+          <div id="chatInner" class="mx-auto w-full max-w-3xl px-4 py-6 space-y-5"></div>
+        </main>
+
+        <footer
+          class="shrink-0 border-t border-slate-200 bg-white/80 p-3 backdrop-blur dark:border-white/10 dark:bg-[#0b0f17]/80"
+        >
+          <div class="mx-auto max-w-3xl">
+            <div
+              class="flex items-end gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm dark:border-white/10 dark:bg-white/5"
+            >
+              <textarea
+                id="input"
+                rows="1"
+                placeholder="Ask BroAI anything… (runs on your GPU)"
+                class="max-h-40 flex-1 resize-none bg-transparent px-2 py-2 text-sm outline-none placeholder:text-slate-400"
+              ></textarea>
+              <button
+                id="stopBtn"
+                class="hidden rounded-xl bg-red-500/90 p-2.5 text-white hover:bg-red-500"
+              >
+                <i data-lucide="square" class="h-4 w-4"></i>
+              </button>
+              <button
+                id="sendBtn"
+                class="rounded-xl bg-brand-500 p-2.5 text-white hover:bg-brand-600 disabled:opacity-40"
+              >
+                <i data-lucide="arrow-up" class="h-4 w-4"></i>
+              </button>
+            </div>
+            <p class="mt-2 text-center text-[11px] text-slate-500">
+              Everything runs locally in your browser. Nothing is uploaded.
+            </p>
+            <p
+              class="mt-1 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-slate-500"
+            >
+              <button data-info="about" class="hover:text-brand-500 hover:underline">
+                About us
+              </button>
+              <button data-info="help" class="hover:text-brand-500 hover:underline">Help</button>
+              <button data-info="readme" class="hover:text-brand-500 hover:underline">
+                Read me
+              </button>
+              <button data-info="license" class="hover:text-brand-500 hover:underline">
+                License
+              </button>
+              <span>© 2026 Chaitanya Lalit Patil — All rights reserved.</span>
+            </p>
+          </div>
+        </footer>
       </div>
-    </div>
-    <div class="flex flex-wrap items-center gap-2 border-b border-slate-200 px-4 py-2 text-[11px] text-slate-500 dark:border-white/10">
-      <label class="flex items-center gap-1"><i data-lucide="timer" class="h-3.5 w-3.5"></i>
-        <select id="timeLimit" class="rounded-md border border-slate-200 bg-transparent px-1.5 py-1 dark:border-white/10">
-          <option value="1000">1s</option>
-          <option value="5000" selected>5s</option>
-          <option value="15000">15s</option>
-          <option value="30000">30s</option>
-        </select>
-      </label>
-      <label class="flex items-center gap-1"><i data-lucide="memory-stick" class="h-3.5 w-3.5"></i>
-        <select id="memLimit" class="rounded-md border border-slate-200 bg-transparent px-1.5 py-1 dark:border-white/10">
-          <option value="128">128 MB</option>
-          <option value="256" selected>256 MB</option>
-          <option value="512">512 MB</option>
-        </select>
-      </label>
-      <span class="ml-auto font-mono text-emerald-500" id="runStatus"></span>
-    </div>
-    <textarea id="editor" spellcheck="false" class="h-1/2 w-full resize-none bg-[#282c34] p-3 font-mono text-[12.5px] leading-relaxed text-slate-100 outline-none">// Runs in an isolated worker: time-limited, memory-capped, no network.
+
+      <!-- Sandbox drawer -->
+      <aside
+        id="sandbox"
+        class="fixed inset-y-0 right-0 z-40 flex w-full max-w-md translate-x-full flex-col border-l border-slate-200 bg-white transition-transform duration-300 dark:border-white/10 dark:bg-[#0d121c]"
+      >
+        <div
+          class="flex h-16 items-center justify-between border-b border-slate-200 px-4 dark:border-white/10"
+        >
+          <div class="flex items-center gap-2 text-sm font-semibold">
+            <i data-lucide="terminal" class="h-4 w-4"></i> JS Sandbox
+          </div>
+          <div class="flex items-center gap-1">
+            <button
+              id="runCode"
+              class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-emerald-600"
+            >
+              <i data-lucide="play" class="h-3.5 w-3.5"></i> Run
+            </button>
+            <button
+              id="killCode"
+              class="hidden inline-flex items-center gap-1.5 rounded-lg bg-red-500 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-red-600"
+            >
+              <i data-lucide="square" class="h-3.5 w-3.5"></i> Stop
+            </button>
+            <button
+              id="clearConsole"
+              class="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-white/10"
+              title="Clear console"
+            >
+              <i data-lucide="eraser" class="h-4 w-4"></i>
+            </button>
+            <button
+              id="closeSandbox"
+              class="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-white/10"
+            >
+              <i data-lucide="x" class="h-4 w-4"></i>
+            </button>
+          </div>
+        </div>
+        <div
+          class="flex flex-wrap items-center gap-2 border-b border-slate-200 px-4 py-2 text-[11px] text-slate-500 dark:border-white/10"
+        >
+          <label class="flex items-center gap-1"
+            ><i data-lucide="timer" class="h-3.5 w-3.5"></i>
+            <select
+              id="timeLimit"
+              class="rounded-md border border-slate-200 bg-transparent px-1.5 py-1 dark:border-white/10"
+            >
+              <option value="1000">1s</option>
+              <option value="5000" selected>5s</option>
+              <option value="15000">15s</option>
+              <option value="30000">30s</option>
+            </select>
+          </label>
+          <label class="flex items-center gap-1"
+            ><i data-lucide="memory-stick" class="h-3.5 w-3.5"></i>
+            <select
+              id="memLimit"
+              class="rounded-md border border-slate-200 bg-transparent px-1.5 py-1 dark:border-white/10"
+            >
+              <option value="128">128 MB</option>
+              <option value="256" selected>256 MB</option>
+              <option value="512">512 MB</option>
+            </select>
+          </label>
+          <span class="ml-auto font-mono text-emerald-500" id="runStatus"></span>
+        </div>
+        <textarea
+          id="editor"
+          spellcheck="false"
+          class="h-1/2 w-full resize-none bg-[#282c34] p-3 font-mono text-[12.5px] leading-relaxed text-slate-100 outline-none"
+        >
+// Runs in an isolated worker: time-limited, memory-capped, no network.
 const nums = [1, 2, 3, 4, 5];
 console.log('sum =', nums.reduce((a, b) => a + b, 0));</textarea>
-    <div class="border-t border-white/10 px-3 py-1.5 text-[10px] uppercase tracking-wider text-slate-500">Console</div>
-    <div id="console" class="flex-1 overflow-y-auto bg-[#1b1f27] p-3 font-mono text-[12px] leading-relaxed text-slate-300 space-y-1"></div>
-
-  </aside>
-  <div id="sandboxScrim" class="fixed inset-0 z-30 hidden bg-black/50"></div>
-
-  <!-- Image lab drawer (Transformers.js, fully local) -->
-  <aside id="imagelab" class="fixed inset-y-0 right-0 z-40 flex w-full max-w-md translate-x-full flex-col border-l border-slate-200 bg-white transition-transform duration-300 dark:border-white/10 dark:bg-[#0d121c]">
-    <div class="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 px-4 dark:border-white/10">
-      <div class="flex items-center gap-2 text-sm font-semibold"><i data-lucide="image" class="h-4 w-4"></i> Image Lab</div>
-      <button id="closeImagelab" class="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-white/10"><i data-lucide="x" class="h-4 w-4"></i></button>
-    </div>
-    <div class="flex-1 overflow-y-auto p-4 space-y-3 text-sm">
-      <div class="grid grid-cols-3 gap-1 rounded-lg bg-slate-100 p-1 text-[11px] font-medium dark:bg-white/5">
-        <button data-mode="local" class="modeTab rounded-md px-2 py-1.5">On-device</button>
-        <button data-mode="cloud" class="modeTab rounded-md px-2 py-1.5">Image gen</button>
-        <button data-mode="video" class="modeTab rounded-md px-2 py-1.5">Video gen</button>
-      </div>
-
-      <details id="keysBox" class="rounded-lg border border-slate-200 p-2 dark:border-white/10">
-        <summary class="cursor-pointer text-xs font-medium text-slate-600 dark:text-slate-300">API keys (stored only in this browser)</summary>
-        <div class="mt-2 space-y-2">
-          <label class="block space-y-1">
-            <span class="text-[11px] text-slate-500">Hugging Face API key (hf_…)</span>
-            <input id="hfKey" type="password" autocomplete="off" placeholder="hf_xxxxxxxx" class="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs dark:border-white/10 dark:bg-white/5" />
-          </label>
-          <label class="block space-y-1">
-            <span class="text-[11px] text-slate-500">Video generation API key</span>
-            <input id="vidKey" type="password" autocomplete="off" placeholder="key for your video API" class="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs dark:border-white/10 dark:bg-white/5" />
-          </label>
-          <div class="flex gap-2">
-            <button id="saveKeys" class="flex-1 rounded-lg bg-brand-500 px-2 py-1.5 text-xs font-medium text-white hover:bg-brand-600">Save keys</button>
-            <button id="clearKeys" class="rounded-lg border border-red-300/60 px-2 py-1.5 text-xs text-red-500 hover:bg-red-500/10 dark:border-red-500/30">Clear</button>
-          </div>
-          <p class="text-[10px] leading-relaxed text-slate-500">Keys never leave your device except in the request to the provider you choose. Cloud generation is the only part of BroAI that touches a network API.</p>
+        <div
+          class="border-t border-white/10 px-3 py-1.5 text-[10px] uppercase tracking-wider text-slate-500"
+        >
+          Console
         </div>
-      </details>
+        <div
+          id="console"
+          class="flex-1 overflow-y-auto bg-[#1b1f27] p-3 font-mono text-[12px] leading-relaxed text-slate-300 space-y-1"
+        ></div>
+      </aside>
+      <div id="sandboxScrim" class="fixed inset-0 z-30 hidden bg-black/50"></div>
 
-      <!-- On-device panel -->
-      <div id="panelLocal" class="space-y-3">
-        <p class="text-[11px] leading-relaxed text-slate-500">Runs <span class="font-medium">Transformers.js</span> on WebGPU, 100% in your browser. No server, no upload — models are cached in IndexedDB after the first run.</p>
-        <label class="block space-y-1">
-          <span class="text-xs font-medium text-slate-600 dark:text-slate-300">Task</span>
-          <select id="imgTask" class="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs dark:border-white/10 dark:bg-white/5">
-            <option value="bg">Remove background (RMBG-1.4)</option>
-            <option value="upscale">Upscale 2× (Swin2SR)</option>
-            <option value="depth">Depth map (Depth Anything V2)</option>
-            <option value="caption">Describe image (ViT-GPT2)</option>
-          </select>
-        </label>
-        <label class="block space-y-1">
-          <span class="text-xs font-medium text-slate-600 dark:text-slate-300">Source image</span>
-          <input id="imgFile" type="file" accept="image/*" class="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs file:mr-2 file:rounded-md file:border-0 file:bg-brand-500 file:px-2 file:py-1 file:text-white dark:border-white/10 dark:bg-white/5" />
-        </label>
-        <button id="imgRun" class="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand-500 px-3 py-2 text-xs font-medium text-white hover:bg-brand-600 disabled:opacity-50"><i data-lucide="sparkles" class="h-4 w-4"></i> Generate</button>
-      </div>
+      <!-- Image lab drawer (Transformers.js, fully local) -->
+      <aside
+        id="imagelab"
+        class="fixed inset-y-0 right-0 z-40 flex w-full max-w-md translate-x-full flex-col border-l border-slate-200 bg-white transition-transform duration-300 dark:border-white/10 dark:bg-[#0d121c]"
+      >
+        <div
+          class="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 px-4 dark:border-white/10"
+        >
+          <div class="flex items-center gap-2 text-sm font-semibold">
+            <i data-lucide="image" class="h-4 w-4"></i> Image Lab
+          </div>
+          <button
+            id="closeImagelab"
+            class="rounded-lg p-2 hover:bg-slate-100 dark:hover:bg-white/10"
+          >
+            <i data-lucide="x" class="h-4 w-4"></i>
+          </button>
+        </div>
+        <div class="flex-1 overflow-y-auto p-4 space-y-3 text-sm">
+          <div
+            class="grid grid-cols-3 gap-1 rounded-lg bg-slate-100 p-1 text-[11px] font-medium dark:bg-white/5"
+          >
+            <button data-mode="local" class="modeTab rounded-md px-2 py-1.5">On-device</button>
+            <button data-mode="cloud" class="modeTab rounded-md px-2 py-1.5">Image gen</button>
+            <button data-mode="video" class="modeTab rounded-md px-2 py-1.5">Video gen</button>
+          </div>
 
-      <!-- Cloud image panel -->
-      <div id="panelCloud" class="hidden space-y-3">
-        <p class="text-[11px] leading-relaxed text-slate-500">Text-to-image with your own Hugging Face key — FLUX and other diffusion models are far too large for the browser, so they run on the provider you pick.</p>
-        <label class="block space-y-1">
-          <span class="text-xs font-medium text-slate-600 dark:text-slate-300">Model</span>
-          <select id="cloudModel" class="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs dark:border-white/10 dark:bg-white/5">
-            <option value="black-forest-labs/FLUX.1-schnell">FLUX.1 schnell — fast</option>
-            <option value="black-forest-labs/FLUX.1-dev">FLUX.1 dev — high quality</option>
-            <option value="stabilityai/stable-diffusion-xl-base-1.0">Stable Diffusion XL</option>
-            <option value="stabilityai/stable-diffusion-3.5-large">Stable Diffusion 3.5 Large</option>
-            <option value="__custom">Custom model id…</option>
-          </select>
-        </label>
-        <input id="cloudModelCustom" placeholder="owner/model-name" class="hidden w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs dark:border-white/10 dark:bg-white/5" />
-        <label class="block space-y-1">
-          <span class="text-xs font-medium text-slate-600 dark:text-slate-300">Prompt</span>
-          <textarea id="cloudPrompt" rows="3" placeholder="A neon-lit cyberpunk street after rain, cinematic" class="w-full resize-y rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs dark:border-white/10 dark:bg-white/5"></textarea>
-        </label>
-        <button id="cloudRun" class="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand-500 px-3 py-2 text-xs font-medium text-white hover:bg-brand-600 disabled:opacity-50"><i data-lucide="sparkles" class="h-4 w-4"></i> Generate image</button>
-      </div>
+          <details id="keysBox" class="rounded-lg border border-slate-200 p-2 dark:border-white/10">
+            <summary class="cursor-pointer text-xs font-medium text-slate-600 dark:text-slate-300">
+              API keys (stored only in this browser)
+            </summary>
+            <div class="mt-2 space-y-2">
+              <label class="block space-y-1">
+                <span class="text-[11px] text-slate-500">Hugging Face API key (hf_…)</span>
+                <input
+                  id="hfKey"
+                  type="password"
+                  autocomplete="off"
+                  placeholder="hf_xxxxxxxx"
+                  class="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs dark:border-white/10 dark:bg-white/5"
+                />
+              </label>
+              <label class="block space-y-1">
+                <span class="text-[11px] text-slate-500">Video generation API key</span>
+                <input
+                  id="vidKey"
+                  type="password"
+                  autocomplete="off"
+                  placeholder="key for your video API"
+                  class="w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs dark:border-white/10 dark:bg-white/5"
+                />
+              </label>
+              <div class="flex gap-2">
+                <button
+                  id="saveKeys"
+                  class="flex-1 rounded-lg bg-brand-500 px-2 py-1.5 text-xs font-medium text-white hover:bg-brand-600"
+                >
+                  Save keys
+                </button>
+                <button
+                  id="clearKeys"
+                  class="rounded-lg border border-red-300/60 px-2 py-1.5 text-xs text-red-500 hover:bg-red-500/10 dark:border-red-500/30"
+                >
+                  Clear
+                </button>
+              </div>
+              <p class="text-[10px] leading-relaxed text-slate-500">
+                Keys never leave your device except in the request to the provider you choose. Cloud
+                generation is the only part of BroAI that touches a network API.
+              </p>
+            </div>
+          </details>
 
-      <!-- Video panel -->
-      <div id="panelVideo" class="hidden space-y-3">
-        <p class="text-[11px] leading-relaxed text-slate-500">Text-to-video through an API of your choice. Hugging Face has free-tier text-to-video models; you can also point BroAI at any endpoint that accepts <code>{"inputs": prompt}</code>.</p>
-        <label class="block space-y-1">
-          <span class="text-xs font-medium text-slate-600 dark:text-slate-300">Provider</span>
-          <select id="vidProvider" class="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs dark:border-white/10 dark:bg-white/5">
-            <option value="hf">Hugging Face Inference</option>
-            <option value="custom">Custom endpoint</option>
-          </select>
-        </label>
-        <label class="block space-y-1">
-          <span id="vidTargetLabel" class="text-xs font-medium text-slate-600 dark:text-slate-300">Model id</span>
-          <input id="vidModel" value="Wan-AI/Wan2.1-T2V-1.3B-Diffusers" class="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs dark:border-white/10 dark:bg-white/5" />
-        </label>
-        <label class="block space-y-1">
-          <span class="text-xs font-medium text-slate-600 dark:text-slate-300">Prompt</span>
-          <textarea id="vidPrompt" rows="3" placeholder="A drone shot over snowy mountains at sunrise" class="w-full resize-y rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs dark:border-white/10 dark:bg-white/5"></textarea>
-        </label>
-        <button id="vidRun" class="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand-500 px-3 py-2 text-xs font-medium text-white hover:bg-brand-600 disabled:opacity-50"><i data-lucide="clapperboard" class="h-4 w-4"></i> Generate video</button>
-      </div>
+          <!-- On-device panel -->
+          <div id="panelLocal" class="space-y-3">
+            <p class="text-[11px] leading-relaxed text-slate-500">
+              Runs <span class="font-medium">Transformers.js</span> on WebGPU, 100% in your browser.
+              No server, no upload — models are cached in IndexedDB after the first run.
+            </p>
+            <label class="block space-y-1">
+              <span class="text-xs font-medium text-slate-600 dark:text-slate-300">Task</span>
+              <select
+                id="imgTask"
+                class="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs dark:border-white/10 dark:bg-white/5"
+              >
+                <option value="bg">Remove background (RMBG-1.4)</option>
+                <option value="upscale">Upscale 2× (Swin2SR)</option>
+                <option value="depth">Depth map (Depth Anything V2)</option>
+                <option value="caption">Describe image (ViT-GPT2)</option>
+              </select>
+            </label>
+            <label class="block space-y-1">
+              <span class="text-xs font-medium text-slate-600 dark:text-slate-300"
+                >Source image</span
+              >
+              <input
+                id="imgFile"
+                type="file"
+                accept="image/*"
+                class="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs file:mr-2 file:rounded-md file:border-0 file:bg-brand-500 file:px-2 file:py-1 file:text-white dark:border-white/10 dark:bg-white/5"
+              />
+            </label>
+            <button
+              id="imgRun"
+              class="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand-500 px-3 py-2 text-xs font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+            >
+              <i data-lucide="sparkles" class="h-4 w-4"></i> Generate
+            </button>
+          </div>
 
-      <div id="imgProgress" class="hidden">
-        <div class="flex items-center justify-between text-[11px] font-medium text-brand-600 dark:text-brand-300"><span id="imgProgressText">Preparing…</span><span id="imgProgressPct" class="font-mono">0%</span></div>
-        <div class="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-brand-200/70 dark:bg-white/10"><div id="imgProgressBar" class="h-full w-0 rounded-full bg-brand-500 transition-all duration-200"></div></div>
-      </div>
-      <div class="grid grid-cols-2 gap-2">
-        <div class="space-y-1"><div class="text-[10px] uppercase tracking-wider text-slate-500">Input</div><div class="grid aspect-square place-items-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5"><img id="imgIn" alt="Selected source image" class="hidden max-h-full max-w-full object-contain" /><span id="imgInEmpty" class="text-[11px] text-slate-400">No image</span></div></div>
-        <div class="space-y-1"><div class="text-[10px] uppercase tracking-wider text-slate-500">Output</div><div class="grid aspect-square place-items-center overflow-hidden rounded-lg border border-slate-200 bg-[url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2216%22 height=%2216%22><rect width=%228%22 height=%228%22 fill=%22%23e2e8f0%22/><rect x=%228%22 y=%228%22 width=%228%22 height=%228%22 fill=%22%23e2e8f0%22/></svg>')] dark:border-white/10"><img id="imgOut" alt="Generated result" class="hidden max-h-full max-w-full object-contain" /><video id="vidOut" controls class="hidden max-h-full max-w-full"></video><span id="imgOutEmpty" class="text-[11px] text-slate-400">No result</span></div></div>
-      </div>
-      <p id="imgText" class="hidden rounded-lg bg-slate-100 p-2 text-xs dark:bg-white/5"></p>
-      <a id="imgDownload" class="hidden inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs hover:bg-slate-100 dark:border-white/10 dark:hover:bg-white/10" download="broai-output"><i data-lucide="download" class="h-3.5 w-3.5"></i> Download result</a>
+          <!-- Cloud image panel -->
+          <div id="panelCloud" class="hidden space-y-3">
+            <p class="text-[11px] leading-relaxed text-slate-500">
+              Text-to-image with your own Hugging Face key — FLUX and other diffusion models are far
+              too large for the browser, so they run on the provider you pick.
+            </p>
+            <label class="block space-y-1">
+              <span class="text-xs font-medium text-slate-600 dark:text-slate-300">Model</span>
+              <select
+                id="cloudModel"
+                class="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs dark:border-white/10 dark:bg-white/5"
+              >
+                <option value="black-forest-labs/FLUX.1-schnell">FLUX.1 schnell — fast</option>
+                <option value="black-forest-labs/FLUX.1-dev">FLUX.1 dev — high quality</option>
+                <option value="stabilityai/stable-diffusion-xl-base-1.0">
+                  Stable Diffusion XL
+                </option>
+                <option value="stabilityai/stable-diffusion-3.5-large">
+                  Stable Diffusion 3.5 Large
+                </option>
+                <option value="__custom">Custom model id…</option>
+              </select>
+            </label>
+            <input
+              id="cloudModelCustom"
+              placeholder="owner/model-name"
+              class="hidden w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs dark:border-white/10 dark:bg-white/5"
+            />
+            <label class="block space-y-1">
+              <span class="text-xs font-medium text-slate-600 dark:text-slate-300">Prompt</span>
+              <textarea
+                id="cloudPrompt"
+                rows="3"
+                placeholder="A neon-lit cyberpunk street after rain, cinematic"
+                class="w-full resize-y rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs dark:border-white/10 dark:bg-white/5"
+              ></textarea>
+            </label>
+            <button
+              id="cloudRun"
+              class="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand-500 px-3 py-2 text-xs font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+            >
+              <i data-lucide="sparkles" class="h-4 w-4"></i> Generate image
+            </button>
+          </div>
+
+          <!-- Video panel -->
+          <div id="panelVideo" class="hidden space-y-3">
+            <p class="text-[11px] leading-relaxed text-slate-500">
+              Text-to-video through an API of your choice. Hugging Face has free-tier text-to-video
+              models; you can also point BroAI at any endpoint that accepts
+              <code>{"inputs": prompt}</code>.
+            </p>
+            <label class="block space-y-1">
+              <span class="text-xs font-medium text-slate-600 dark:text-slate-300">Provider</span>
+              <select
+                id="vidProvider"
+                class="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs dark:border-white/10 dark:bg-white/5"
+              >
+                <option value="hf">Hugging Face Inference</option>
+                <option value="custom">Custom endpoint</option>
+              </select>
+            </label>
+            <label class="block space-y-1">
+              <span
+                id="vidTargetLabel"
+                class="text-xs font-medium text-slate-600 dark:text-slate-300"
+                >Model id</span
+              >
+              <input
+                id="vidModel"
+                value="Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
+                class="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs dark:border-white/10 dark:bg-white/5"
+              />
+            </label>
+            <label class="block space-y-1">
+              <span class="text-xs font-medium text-slate-600 dark:text-slate-300">Prompt</span>
+              <textarea
+                id="vidPrompt"
+                rows="3"
+                placeholder="A drone shot over snowy mountains at sunrise"
+                class="w-full resize-y rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs dark:border-white/10 dark:bg-white/5"
+              ></textarea>
+            </label>
+            <button
+              id="vidRun"
+              class="inline-flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand-500 px-3 py-2 text-xs font-medium text-white hover:bg-brand-600 disabled:opacity-50"
+            >
+              <i data-lucide="clapperboard" class="h-4 w-4"></i> Generate video
+            </button>
+          </div>
+
+          <div id="imgProgress" class="hidden">
+            <div
+              class="flex items-center justify-between text-[11px] font-medium text-brand-600 dark:text-brand-300"
+            >
+              <span id="imgProgressText">Preparing…</span
+              ><span id="imgProgressPct" class="font-mono">0%</span>
+            </div>
+            <div
+              class="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-brand-200/70 dark:bg-white/10"
+            >
+              <div
+                id="imgProgressBar"
+                class="h-full w-0 rounded-full bg-brand-500 transition-all duration-200"
+              ></div>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div class="space-y-1">
+              <div class="text-[10px] uppercase tracking-wider text-slate-500">Input</div>
+              <div
+                class="grid aspect-square place-items-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 dark:border-white/10 dark:bg-white/5"
+              >
+                <img
+                  id="imgIn"
+                  alt="Selected source image"
+                  class="hidden max-h-full max-w-full object-contain"
+                /><span id="imgInEmpty" class="text-[11px] text-slate-400">No image</span>
+              </div>
+            </div>
+            <div class="space-y-1">
+              <div class="text-[10px] uppercase tracking-wider text-slate-500">Output</div>
+              <div
+                class="grid aspect-square place-items-center overflow-hidden rounded-lg border border-slate-200 bg-[url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2216%22 height=%2216%22><rect width=%228%22 height=%228%22 fill=%22%23e2e8f0%22/><rect x=%228%22 y=%228%22 width=%228%22 height=%228%22 fill=%22%23e2e8f0%22/></svg>')] dark:border-white/10"
+              >
+                <img
+                  id="imgOut"
+                  alt="Generated result"
+                  class="hidden max-h-full max-w-full object-contain"
+                /><video id="vidOut" controls class="hidden max-h-full max-w-full"></video
+                ><span id="imgOutEmpty" class="text-[11px] text-slate-400">No result</span>
+              </div>
+            </div>
+          </div>
+          <p id="imgText" class="hidden rounded-lg bg-slate-100 p-2 text-xs dark:bg-white/5"></p>
+          <a
+            id="imgDownload"
+            class="hidden inline-flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 px-3 py-2 text-xs hover:bg-slate-100 dark:border-white/10 dark:hover:bg-white/10"
+            download="broai-output"
+            ><i data-lucide="download" class="h-3.5 w-3.5"></i> Download result</a
+          >
+        </div>
+      </aside>
+      <div id="imagelabScrim" class="fixed inset-0 z-30 hidden bg-black/50"></div>
     </div>
 
-  </aside>
-  <div id="imagelabScrim" class="fixed inset-0 z-30 hidden bg-black/50"></div>
-</div>
-
-
-<!-- Info modal: About / Help / Readme / License -->
-<div id="infoModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/60 p-4">
-  <div class="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-white/10 dark:bg-[#0d121c]">
-    <div class="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-white/10">
-      <h2 id="infoTitle" class="text-sm font-semibold">About BroAI</h2>
-      <button id="closeInfo" class="rounded-lg p-1.5 hover:bg-slate-100 dark:hover:bg-white/10"><i data-lucide="x" class="h-4 w-4"></i></button>
+    <!-- Info modal: About / Help / Readme / License -->
+    <div
+      id="infoModal"
+      class="fixed inset-0 z-50 hidden items-center justify-center bg-black/60 p-4"
+    >
+      <div
+        class="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl dark:border-white/10 dark:bg-[#0d121c]"
+      >
+        <div
+          class="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-white/10"
+        >
+          <h2 id="infoTitle" class="text-sm font-semibold">About BroAI</h2>
+          <button id="closeInfo" class="rounded-lg p-1.5 hover:bg-slate-100 dark:hover:bg-white/10">
+            <i data-lucide="x" class="h-4 w-4"></i>
+          </button>
+        </div>
+        <div id="infoBody" class="msg overflow-y-auto px-4 py-3 text-sm leading-relaxed"></div>
+        <div
+          class="border-t border-slate-200 px-4 py-2.5 text-[11px] text-slate-500 dark:border-white/10"
+        >
+          © 2026 Chaitanya Lalit Patil · Proprietary license · All rights reserved.
+        </div>
+      </div>
     </div>
-    <div id="infoBody" class="msg overflow-y-auto px-4 py-3 text-sm leading-relaxed"></div>
-    <div class="border-t border-slate-200 px-4 py-2.5 text-[11px] text-slate-500 dark:border-white/10">
-      © 2026 Chaitanya Lalit Patil · Proprietary license · All rights reserved.
-    </div>
-  </div>
-</div>
 
-<div id="toasts" class="pointer-events-none fixed bottom-4 right-4 z-50 flex w-80 flex-col gap-2"></div>
+    <div
+      id="toasts"
+      class="pointer-events-none fixed bottom-4 right-4 z-50 flex w-80 flex-col gap-2"
+    ></div>
 
-<script type="module">
-import * as webllm from "https://esm.run/@mlc-ai/web-llm";
+    <script type="module">
+      import * as webllm from "https://esm.run/@mlc-ai/web-llm";
 
-/* ---------------- Model catalog + fallbacks ---------------- */
-const CATALOG = {
-  "Micro & Instant Models": [
-    { id: "SmolLM2-135M-Instruct-q0f16-MLC", label: "SmolLM2 135M — instant", size: "~270 MB" },
-    { id: "SmolLM2-360M-Instruct-q4f16_1-MLC", label: "SmolLM2 360M — better chat", size: "~380 MB", fallback: "SmolLM2-360M-Instruct-q0f16-MLC" },
-    { id: "Qwen2.5-0.5B-Instruct-q4f16_1-MLC", label: "Qwen 2.5 0.5B — fast multilingual", size: "~350–500 MB" },
-    { id: "Bonsai-1.7B-1bit-MLC", label: "Bonsai 1.7B (1-bit) — experimental", size: "~290 MB", fallback: "SmolLM2-360M-Instruct-q4f16_1-MLC" }
-  ],
-  "Fast & Light Models": [
-    { id: "Qwen2.5-0.5B-Instruct-q0f16-MLC", label: "Qwen 2.5 0.5B (fp16)", size: "~1.0 GB", fallback: "Qwen2.5-0.5B-Instruct-q4f16_1-MLC" },
+      /* ---------------- Model catalog + fallbacks ---------------- */
+      const CATALOG = {
+        "Micro & Instant Models": [
+          {
+            id: "SmolLM2-135M-Instruct-q0f16-MLC",
+            label: "SmolLM2 135M — instant",
+            size: "~270 MB",
+          },
+          {
+            id: "SmolLM2-360M-Instruct-q4f16_1-MLC",
+            label: "SmolLM2 360M — better chat",
+            size: "~380 MB",
+            fallback: "SmolLM2-360M-Instruct-q0f16-MLC",
+          },
+          {
+            id: "Qwen2.5-0.5B-Instruct-q4f16_1-MLC",
+            label: "Qwen 2.5 0.5B — fast multilingual",
+            size: "~350–500 MB",
+          },
+          {
+            id: "Bonsai-1.7B-1bit-MLC",
+            label: "Bonsai 1.7B (1-bit) — experimental",
+            size: "~290 MB",
+            fallback: "SmolLM2-360M-Instruct-q4f16_1-MLC",
+          },
+        ],
+        "Fast & Light Models": [
+          {
+            id: "Qwen2.5-0.5B-Instruct-q0f16-MLC",
+            label: "Qwen 2.5 0.5B (fp16)",
+            size: "~1.0 GB",
+            fallback: "Qwen2.5-0.5B-Instruct-q4f16_1-MLC",
+          },
 
-    { id: "Qwen3-0.6B-q4f16_1-MLC", label: "Qwen 3 0.6B (Qwen 3.5 class)", size: "~0.6 GB", fallback: "Qwen2.5-0.5B-Instruct-q4f16_1-MLC" },
-    { id: "gemma-2-2b-it-q4f16_1-MLC", label: "Gemma 3n / Gemma 2B IT", size: "~1.6 GB", fallback: "gemma-2-2b-it-q4f16_1-MLC-1k" },
-    { id: "SmolLM2-1.7B-Instruct-q4f16_1-MLC", label: "SmolLM2 1.7B Instruct", size: "~1.1 GB" },
-    { id: "Llama-3.2-1B-Instruct-q4f16_1-MLC", label: "Llama 3.2 1B Instruct", size: "~0.9 GB" }
-  ],
-  "Mid & Logic Models": [
-    { id: "Llama-3.2-3B-Instruct-q4f16_1-MLC", label: "Llama 3.2 3B Instruct", size: "~2.2 GB" },
-    { id: "SmolLM3-3B-q4f16_1-MLC", label: "SmolLM3 3B", size: "~2.0 GB", fallback: "Llama-3.2-3B-Instruct-q4f16_1-MLC" },
-    { id: "Phi-3.5-mini-instruct-q4f16_1-MLC", label: "Phi-3.5 Mini Instruct", size: "~2.4 GB" },
-    { id: "Phi-4-mini-instruct-q4f16_1-MLC", label: "Phi-4 Mini Instruct", size: "~2.6 GB", fallback: "Phi-3.5-mini-instruct-q4f16_1-MLC" },
-    { id: "Qwen2.5-3B-Instruct-q4f16_1-MLC", label: "Qwen 2.5 3B Instruct", size: "~2.1 GB", fallback: "Qwen2.5-1.5B-Instruct-q4f16_1-MLC" }
-  ]
-};
+          {
+            id: "Qwen3-0.6B-q4f16_1-MLC",
+            label: "Qwen 3 0.6B (Qwen 3.5 class)",
+            size: "~0.6 GB",
+            fallback: "Qwen2.5-0.5B-Instruct-q4f16_1-MLC",
+          },
+          {
+            id: "gemma-2-2b-it-q4f16_1-MLC",
+            label: "Gemma 3n / Gemma 2B IT",
+            size: "~1.6 GB",
+            fallback: "gemma-2-2b-it-q4f16_1-MLC-1k",
+          },
+          {
+            id: "SmolLM2-1.7B-Instruct-q4f16_1-MLC",
+            label: "SmolLM2 1.7B Instruct",
+            size: "~1.1 GB",
+          },
+          {
+            id: "Llama-3.2-1B-Instruct-q4f16_1-MLC",
+            label: "Llama 3.2 1B Instruct",
+            size: "~0.9 GB",
+          },
+        ],
+        "Mid & Logic Models": [
+          {
+            id: "Llama-3.2-3B-Instruct-q4f16_1-MLC",
+            label: "Llama 3.2 3B Instruct",
+            size: "~2.2 GB",
+          },
+          {
+            id: "SmolLM3-3B-q4f16_1-MLC",
+            label: "SmolLM3 3B",
+            size: "~2.0 GB",
+            fallback: "Llama-3.2-3B-Instruct-q4f16_1-MLC",
+          },
+          {
+            id: "Phi-3.5-mini-instruct-q4f16_1-MLC",
+            label: "Phi-3.5 Mini Instruct",
+            size: "~2.4 GB",
+          },
+          {
+            id: "Phi-4-mini-instruct-q4f16_1-MLC",
+            label: "Phi-4 Mini Instruct",
+            size: "~2.6 GB",
+            fallback: "Phi-3.5-mini-instruct-q4f16_1-MLC",
+          },
+          {
+            id: "Qwen2.5-3B-Instruct-q4f16_1-MLC",
+            label: "Qwen 2.5 3B Instruct",
+            size: "~2.1 GB",
+            fallback: "Qwen2.5-1.5B-Instruct-q4f16_1-MLC",
+          },
+        ],
+      };
 
-const AVAILABLE = new Set((webllm.prebuiltAppConfig?.model_list || []).map(m => m.model_id));
+      const AVAILABLE = new Set(
+        (webllm.prebuiltAppConfig?.model_list || []).map((m) => m.model_id),
+      );
 
-/** Resolve a requested model id to something actually shipped by MLC. */
-function resolveModel(id) {
-  if (AVAILABLE.size === 0) return id;
-  if (AVAILABLE.has(id)) return id;
-  const entry = Object.values(CATALOG).flat().find(m => m.id === id);
-  if (entry?.fallback && AVAILABLE.has(entry.fallback)) return entry.fallback;
-  // family-based heuristic fallback
-  const stem = id.split("-").slice(0, 2).join("-").toLowerCase();
-  const near = [...AVAILABLE].find(m => m.toLowerCase().startsWith(stem) && m.includes("q4f16"));
-  if (near) return near;
-  const safe = "Llama-3.2-1B-Instruct-q4f16_1-MLC";
-  return AVAILABLE.has(safe) ? safe : [...AVAILABLE][0];
-}
-
-/* ---------------- DOM helpers ---------------- */
-const $ = (s) => document.querySelector(s);
-const el = (tag, cls, html) => { const n = document.createElement(tag); if (cls) n.className = cls; if (html != null) n.innerHTML = html; return n; };
-const icons = () => window.lucide?.createIcons();
-
-function toast(msg, type = "info") {
-  const colors = { info: "bg-slate-900 dark:bg-white dark:text-slate-900 text-white", error: "bg-red-600 text-white", warn: "bg-amber-500 text-white", ok: "bg-emerald-600 text-white" };
-  const t = el("div", `pointer-events-auto animate-fadeup rounded-xl px-4 py-3 text-sm shadow-lg ${colors[type] || colors.info}`, DOMPurify.sanitize(msg));
-  $("#toasts").appendChild(t);
-  setTimeout(() => { t.style.opacity = "0"; t.style.transition = "opacity .3s"; setTimeout(() => t.remove(), 320); }, 4200);
-}
-
-/* ---------------- Markdown rendering ---------------- */
-marked.setOptions({
-  breaks: true,
-  gfm: true,
-  highlight(code, lang) {
-    try {
-      if (lang && hljs.getLanguage(lang)) return hljs.highlight(code, { language: lang }).value;
-      return hljs.highlightAuto(code).value;
-    } catch { return code; }
-  }
-});
-
-function renderMarkdown(container, text) {
-  const raw = marked.parse(text || "");
-  container.innerHTML = DOMPurify.sanitize(raw, { ADD_ATTR: ["target"] });
-  container.querySelectorAll("pre > code").forEach((code) => {
-    const pre = code.parentElement;
-    if (pre.parentElement?.classList.contains("code-wrap")) return;
-    const lang = (code.className.match(/language-([\w+#-]+)/) || [, "code"])[1];
-    const wrap = el("div", "code-wrap");
-    const bar = el("div", "code-bar");
-    bar.appendChild(el("span", "", lang));
-    const actions = el("div", "flex items-center gap-1");
-    const copyBtn = el("button", "", '<i data-lucide="copy" class="h-3 w-3"></i>Copy');
-    copyBtn.onclick = () => { navigator.clipboard.writeText(code.textContent || ""); toast("Copied to clipboard", "ok"); };
-    actions.appendChild(copyBtn);
-    if (/^(js|javascript|jsx|ts|typescript|node)$/i.test(lang)) {
-      const runBtn = el("button", "", '<i data-lucide="play" class="h-3 w-3"></i>Run in Sandbox');
-      runBtn.onclick = () => { $("#editor").value = code.textContent || ""; openSandbox(); runSandbox(); };
-      actions.appendChild(runBtn);
-    }
-    bar.appendChild(actions);
-    pre.replaceWith(wrap);
-    wrap.appendChild(bar);
-    wrap.appendChild(pre);
-  });
-  icons();
-}
-
-/* ---------------- Conversation store ---------------- */
-const STORE_KEY = "broai.chats.v1";
-let chats = [];
-let currentId = null;
-
-function loadStore() { try { chats = JSON.parse(localStorage.getItem(STORE_KEY) || "[]"); } catch { chats = []; } }
-function saveStore() { try { localStorage.setItem(STORE_KEY, JSON.stringify(chats)); } catch {} }
-function current() { return chats.find(c => c.id === currentId); }
-
-function newChat() {
-  const chat = { id: crypto.randomUUID(), title: "New chat", messages: [], updated: Date.now() };
-  chats.unshift(chat); currentId = chat.id; saveStore(); renderHistory(); renderChat(); closeSidebar();
-}
-function deleteChat(id) {
-  chats = chats.filter(c => c.id !== id);
-  if (currentId === id) currentId = chats[0]?.id ?? null;
-  if (!currentId) newChat(); else { saveStore(); renderHistory(); renderChat(); }
-}
-function autoTitle(chat, prompt) {
-  if (chat.title !== "New chat") return;
-  const t = prompt.replace(/\s+/g, " ").trim();
-  chat.title = t.length > 38 ? t.slice(0, 38) + "…" : (t || "New chat");
-}
-
-function renderHistory() {
-  const list = $("#historyList"); list.innerHTML = "";
-  if (!chats.length) { list.appendChild(el("div", "px-3 py-6 text-center text-xs text-slate-500", "No conversations yet")); return; }
-  chats.forEach(c => {
-    const active = c.id === currentId;
-    const row = el("div", `group flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${active ? "bg-brand-500/10 text-brand-700 dark:text-brand-200" : "hover:bg-slate-100 dark:hover:bg-white/5"}`);
-    const ico = el("i", "h-4 w-4 shrink-0"); ico.setAttribute("data-lucide", "message-square"); row.appendChild(ico);
-    const label = el("span", "min-w-0 flex-1 truncate"); label.textContent = c.title; row.appendChild(label);
-    const del = el("button", "opacity-0 group-hover:opacity-100 rounded p-1 hover:bg-red-500/15 hover:text-red-500");
-    del.innerHTML = '<i data-lucide="trash-2" class="h-3.5 w-3.5"></i>';
-    del.onclick = (e) => { e.stopPropagation(); deleteChat(c.id); };
-    row.appendChild(del);
-    row.onclick = () => { currentId = c.id; renderHistory(); renderChat(); closeSidebar(); };
-    list.appendChild(row);
-  });
-  icons();
-}
-
-/* ---------------- Chat rendering ---------------- */
-function emptyState() {
-  const wrap = el("div", "flex flex-col items-center justify-center gap-3 py-20 text-center animate-fadeup");
-  wrap.appendChild(el("div", "grid h-14 w-14 place-items-center rounded-2xl bg-brand-500 text-2xl font-bold text-white", "B"));
-  wrap.appendChild(el("h1", "text-2xl font-semibold", "BroAI runs entirely on your device"));
-  wrap.appendChild(el("p", "max-w-md text-sm text-slate-500", "Pick a model above, hit Load to stream the weights into your browser cache, then chat with zero servers involved."));
-  const chips = el("div", "mt-2 flex flex-wrap justify-center gap-2");
-  ["Explain WebGPU in simple terms", "Write a JS debounce function", "Summarize the pros of local LLMs"].forEach(p => {
-    const b = el("button", "rounded-full border border-slate-200 px-3 py-1.5 text-xs hover:bg-slate-100 dark:border-white/10 dark:hover:bg-white/5", p);
-    b.onclick = () => { $("#input").value = p; send(); };
-    chips.appendChild(b);
-  });
-  wrap.appendChild(chips);
-  return wrap;
-}
-
-function messageNode(role, content) {
-  const row = el("div", `flex gap-3 animate-fadeup ${role === "user" ? "justify-end" : ""}`);
-  if (role === "assistant") {
-    const av = el("div", "mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-500 text-xs font-bold text-white", "B");
-    row.appendChild(av);
-  }
-  const bubble = el("div", role === "user"
-    ? "max-w-[85%] rounded-2xl rounded-br-sm bg-brand-500 px-4 py-2.5 text-sm text-white"
-    : "msg min-w-0 flex-1 text-sm leading-relaxed");
-  if (role === "user") bubble.textContent = content; else renderMarkdown(bubble, content);
-  row.appendChild(bubble);
-  return { row, bubble };
-}
-
-function renderChat() {
-  const box = $("#chatInner"); box.innerHTML = "";
-  const chat = current();
-  if (!chat || !chat.messages.length) { box.appendChild(emptyState()); icons(); return; }
-  chat.messages.forEach(m => box.appendChild(messageNode(m.role, m.content).row));
-  icons(); scrollToBottom(true);
-}
-
-/* ---------------- Preferences (streaming smoothness / motion) ---------------- */
-const PREFS_KEY = "broai.prefs.v1";
-const prefs = Object.assign({ smoothness: 45, reduceMotion: false }, (() => {
-  try { return JSON.parse(localStorage.getItem(PREFS_KEY) || "{}"); } catch { return {}; }
-})());
-function savePrefs() { try { localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); } catch {} }
-function applyMotionPref() { document.documentElement.classList.toggle("reduce-motion", !!prefs.reduceMotion); }
-
-let autoStick = true;
-let programmaticScroll = false;
-$("#chatScroll").addEventListener("scroll", () => {
-  if (programmaticScroll) { programmaticScroll = false; return; }
-  const s = $("#chatScroll");
-  // Any real user scroll away from the bottom detaches the view and keeps it stable.
-  autoStick = s.scrollHeight - s.scrollTop - s.clientHeight < 64;
-}, { passive: true });
-
-// Stick to the bottom without animation while streaming: no jerky jumps, and
-// the position is only nudged when it actually drifted by a visible amount.
-function scrollStick() {
-  if (!autoStick) return;
-  const s = $("#chatScroll");
-  const target = s.scrollHeight - s.clientHeight;
-  if (target - s.scrollTop < 1) return;
-  programmaticScroll = true;
-  s.scrollTop = target;
-}
-function scrollToBottom(force) {
-  if (!force && !autoStick) return;
-  const s = $("#chatScroll");
-  if (force) autoStick = true;
-  programmaticScroll = true;
-  s.scrollTop = s.scrollHeight - s.clientHeight;
-}
-
-/* ---------------- Engine ---------------- */
-let engine = null, loadedModel = null, loading = false, generating = false, abortRequested = false;
-
-function setProgress(show, text, pct) {
-  $("#progressBanner").classList.toggle("hidden", !show);
-  if (text != null) $("#progressText").textContent = text;
-  if (pct != null) { $("#progressBar").style.width = `${Math.round(pct * 100)}%`; $("#progressPct").textContent = `${Math.round(pct * 100)}%`; }
-}
-
-async function detectGPU() {
-  if (!("gpu" in navigator)) { $("#gpuStat").textContent = "unavailable"; $("#gpuStat").className = "font-mono text-red-500"; toast("WebGPU is not available in this browser. Use Chrome/Edge 113+ or Safari 18+ on a GPU-capable device.", "error"); return false; }
-  try {
-    const adapter = await navigator.gpu.requestAdapter();
-    if (!adapter) { $("#gpuStat").textContent = "no adapter"; $("#gpuStat").className = "font-mono text-amber-500"; toast("WebGPU exists but no GPU adapter was found. Model loading will fail.", "warn"); return false; }
-    $("#gpuStat").textContent = "accelerated"; $("#gpuStat").className = "font-mono text-emerald-500";
-    return true;
-  } catch (e) { $("#gpuStat").textContent = "error"; $("#gpuStat").className = "font-mono text-red-500"; return false; }
-}
-
-async function loadModel() {
-  if (loading) return;
-  const requested = $("#modelSelect").value;
-  const resolved = resolveModel(requested);
-  if (resolved !== requested) toast(`“${requested}” has no MLC build — falling back to <b>${resolved}</b>.`, "warn");
-  if (engine && loadedModel === resolved) { toast("Model already loaded", "ok"); return; }
-  if (!(await detectGPU())) return;
-
-  loading = true; $("#loadBtn").disabled = true; $("#loadBtnText").textContent = "Loading…";
-
-  // Tell the user up-front whether this is a cold download or a warm cache hit.
-  let cached = false;
-  try { cached = await webllm.hasModelInCache(resolved); } catch { cached = false; }
-  const started = performance.now();
-  setProgress(true, cached
-    ? "Model found in browser cache — loading weights onto the GPU…"
-    : "First run: downloading model weights (this is a one-time multi-hundred-MB download)…", 0);
-  if (!cached) toast("First load downloads the full model over the network. It is cached afterwards, so later loads take seconds.", "info");
-
-  try {
-    if (engine) { await engine.unload().catch(() => {}); engine = null; loadedModel = null; }
-    engine = await webllm.CreateMLCEngine(resolved, {
-      initProgressCallback: (r) => {
-        const pct = typeof r.progress === "number" ? r.progress : 0;
-        const elapsed = (performance.now() - started) / 1000;
-        const eta = pct > 0.02 ? ` · ~${Math.max(0, Math.round(elapsed / pct - elapsed))}s left` : "";
-        setProgress(true, `${r.text || "Loading…"} · ${elapsed.toFixed(0)}s elapsed${eta}`, pct);
+      /** Resolve a requested model id to something actually shipped by MLC. */
+      function resolveModel(id) {
+        if (AVAILABLE.size === 0) return id;
+        if (AVAILABLE.has(id)) return id;
+        const entry = Object.values(CATALOG)
+          .flat()
+          .find((m) => m.id === id);
+        if (entry?.fallback && AVAILABLE.has(entry.fallback)) return entry.fallback;
+        // family-based heuristic fallback
+        const stem = id.split("-").slice(0, 2).join("-").toLowerCase();
+        const near = [...AVAILABLE].find(
+          (m) => m.toLowerCase().startsWith(stem) && m.includes("q4f16"),
+        );
+        if (near) return near;
+        const safe = "Llama-3.2-1B-Instruct-q4f16_1-MLC";
+        return AVAILABLE.has(safe) ? safe : [...AVAILABLE][0];
       }
-    });
-    loadedModel = resolved;
-    setProgress(true, `Ready in ${((performance.now() - started) / 1000).toFixed(1)}s`, 1);
-    setTimeout(() => setProgress(false), 1400);
-    $("#loadBtnText").textContent = "Loaded";
-    toast(`${resolved} is ready — running on your GPU.`, "ok");
-  } catch (e) {
-    console.error(e);
-    setProgress(false);
-    $("#loadBtnText").textContent = "Load";
-    toast(`Failed to load model: ${String(e?.message || e).slice(0, 180)}`, "error");
-  } finally { loading = false; $("#loadBtn").disabled = false; }
-}
 
+      /* ---------------- DOM helpers ---------------- */
+      const $ = (s) => document.querySelector(s);
+      const el = (tag, cls, html) => {
+        const n = document.createElement(tag);
+        if (cls) n.className = cls;
+        if (html != null) n.innerHTML = html;
+        return n;
+      };
+      const icons = () => window.lucide?.createIcons();
 
-async function send() {
-  const input = $("#input");
-  const text = input.value.trim();
-  if (!text || generating) return;
-  if (!engine) { toast("Load a model first (button in the header).", "warn"); return; }
-  const chat = current() || (newChat(), current());
-  input.value = ""; input.style.height = "auto";
-
-  autoTitle(chat, text);
-  chat.messages.push({ role: "user", content: text });
-  chat.updated = Date.now(); saveStore(); renderHistory();
-
-  const box = $("#chatInner");
-  if (box.querySelector("h1")) box.innerHTML = "";
-  box.appendChild(messageNode("user", text).row);
-  const { row, bubble } = messageNode("assistant", "");
-  bubble.classList.add("cursor-blink");
-  box.appendChild(row);
-  scrollToBottom(true);
-
-  generating = true; abortRequested = false;
-  $("#sendBtn").classList.add("hidden"); $("#stopBtn").classList.remove("hidden");
-
-  let acc = "", tokens = 0;
-  const start = performance.now();
-  const typer = createTyper(bubble);
-  try {
-    const stream = await engine.chat.completions.create({
-      stream: true,
-      temperature: 0.7,
-      max_tokens: 1536,
-      messages: [
-        { role: "system", content: "You are BroAI, a helpful, concise assistant running fully offline in the user's browser. Use markdown and fenced code blocks with language tags." },
-        ...chat.messages.map(m => ({ role: m.role, content: m.content }))
-      ]
-    });
-    for await (const chunk of stream) {
-      if (abortRequested) { await engine.interruptGenerate?.(); break; }
-      const delta = chunk.choices?.[0]?.delta?.content || "";
-      if (!delta) continue;
-      acc += delta; tokens++;
-      typer.push(delta);
-      const secs = (performance.now() - start) / 1000;
-      if (secs > 0.2) $("#tpsStat").textContent = `${(tokens / secs).toFixed(1)} t/s`;
-    }
-  } catch (e) {
-    console.error(e);
-    acc = acc || `**Generation failed:** ${String(e?.message || e)}`;
-    toast("Generation error — see console.", "error");
-  } finally {
-    await typer.finish(acc || "_(empty response)_");
-    bubble.classList.remove("cursor-blink");
-    chat.messages.push({ role: "assistant", content: acc });
-    chat.updated = Date.now(); saveStore(); renderHistory();
-    generating = false;
-    $("#sendBtn").classList.remove("hidden"); $("#stopBtn").classList.add("hidden");
-    scrollToBottom(false);
-  }
-}
-
-/* ---- Smooth typewriter: decouples token bursts from painting ---- */
-function createTyper(bubble) {
-  let target = "", shown = 0, raf = 0, last = 0, done = null, finalText = null, acc = 0;
-  bubble.classList.add("cursor-blink");
-
-  const paint = () => {
-    renderMarkdown(bubble, target.slice(0, shown));
-    bubble.classList.add("cursor-blink");
-    scrollStick();
-  };
-
-  const step = (now) => {
-    const dt = Math.min(64, now - (last || now));
-    last = now;
-    const remaining = target.length - shown;
-    if (remaining > 0) {
-      // User-controlled smoothness: 0 = ultra smooth/slow, 100 = instant.
-      const s = prefs.smoothness / 100;
-      const base = 18 + s * s * 900;                 // chars/sec floor
-      const catchUp = remaining * (0.8 + s * 14);    // never lag far behind
-      let cps = Math.max(base, Math.min(1400, catchUp));
-      if (prefs.reduceMotion) cps = Math.min(cps, 90);
-      acc += (cps * dt) / 1000;
-      const advance = Math.floor(acc);
-      if (advance >= 1) {
-        acc -= advance;
-        shown = Math.min(target.length, shown + advance);
-        paint();
+      function toast(msg, type = "info") {
+        const colors = {
+          info: "bg-slate-900 dark:bg-white dark:text-slate-900 text-white",
+          error: "bg-red-600 text-white",
+          warn: "bg-amber-500 text-white",
+          ok: "bg-emerald-600 text-white",
+        };
+        const t = el(
+          "div",
+          `pointer-events-auto animate-fadeup rounded-xl px-4 py-3 text-sm shadow-lg ${colors[type] || colors.info}`,
+          DOMPurify.sanitize(msg),
+        );
+        $("#toasts").appendChild(t);
+        setTimeout(() => {
+          t.style.opacity = "0";
+          t.style.transition = "opacity .3s";
+          setTimeout(() => t.remove(), 320);
+        }, 4200);
       }
-    }
-    if (finalText !== null && shown >= target.length) {
-      raf = 0;
-      renderMarkdown(bubble, finalText);
-      scrollStick();
-      done?.();
-      return;
-    }
-    raf = requestAnimationFrame(step);
-  };
 
-  const start = () => { if (!raf) { last = 0; acc = 0; raf = requestAnimationFrame(step); } };
-  start();
-
-  return {
-    push(delta) { target += delta; start(); },
-    finish(text) {
-      finalText = text;
-      target = text;
-      start();
-      return new Promise((res) => {
-        done = () => res();
-        // Safety net in case rAF is throttled (background tab).
-        setTimeout(() => { if (raf) { cancelAnimationFrame(raf); raf = 0; renderMarkdown(bubble, text); res(); } }, 4000);
+      /* ---------------- Markdown rendering ---------------- */
+      marked.setOptions({
+        breaks: true,
+        gfm: true,
+        highlight(code, lang) {
+          try {
+            if (lang && hljs.getLanguage(lang))
+              return hljs.highlight(code, { language: lang }).value;
+            return hljs.highlightAuto(code).value;
+          } catch {
+            return code;
+          }
+        },
       });
-    }
-  };
-}
 
+      function renderMarkdown(container, text) {
+        const raw = marked.parse(text || "");
+        container.innerHTML = DOMPurify.sanitize(raw, { ADD_ATTR: ["target"] });
+        container.querySelectorAll("pre > code").forEach((code) => {
+          const pre = code.parentElement;
+          if (pre.parentElement?.classList.contains("code-wrap")) return;
+          const lang = (code.className.match(/language-([\w+#-]+)/) || [, "code"])[1];
+          const wrap = el("div", "code-wrap");
+          const bar = el("div", "code-bar");
+          bar.appendChild(el("span", "", lang));
+          const actions = el("div", "flex items-center gap-1");
+          const copyBtn = el("button", "", '<i data-lucide="copy" class="h-3 w-3"></i>Copy');
+          copyBtn.onclick = () => {
+            navigator.clipboard.writeText(code.textContent || "");
+            toast("Copied to clipboard", "ok");
+          };
+          actions.appendChild(copyBtn);
+          if (/^(js|javascript|jsx|ts|typescript|node)$/i.test(lang)) {
+            const runBtn = el(
+              "button",
+              "",
+              '<i data-lucide="play" class="h-3 w-3"></i>Run in Sandbox',
+            );
+            runBtn.onclick = () => {
+              $("#editor").value = code.textContent || "";
+              openSandbox();
+              runSandbox();
+            };
+            actions.appendChild(runBtn);
+          }
+          bar.appendChild(actions);
+          pre.replaceWith(wrap);
+          wrap.appendChild(bar);
+          wrap.appendChild(pre);
+        });
+        icons();
+      }
 
+      /* ---------------- Conversation store ---------------- */
+      const STORE_KEY = "broai.chats.v1";
+      let chats = [];
+      let currentId = null;
 
-/* ---------------- Sandbox ---------------- */
-function openSandbox() { $("#sandbox").classList.remove("translate-x-full"); $("#sandboxScrim").classList.remove("hidden"); }
-function closeSandboxPanel() { $("#sandbox").classList.add("translate-x-full"); $("#sandboxScrim").classList.add("hidden"); }
+      function loadStore() {
+        try {
+          chats = JSON.parse(localStorage.getItem(STORE_KEY) || "[]");
+        } catch {
+          chats = [];
+        }
+      }
+      function saveStore() {
+        try {
+          localStorage.setItem(STORE_KEY, JSON.stringify(chats));
+        } catch {}
+      }
+      function current() {
+        return chats.find((c) => c.id === currentId);
+      }
 
-const MAX_LINES = 500;          // console line cap
-const MAX_CHARS_PER_LINE = 4000; // truncate huge payloads
-let consoleLines = 0;
+      function newChat() {
+        const chat = {
+          id: crypto.randomUUID(),
+          title: "New chat",
+          messages: [],
+          updated: Date.now(),
+        };
+        chats.unshift(chat);
+        currentId = chat.id;
+        saveStore();
+        renderHistory();
+        renderChat();
+        closeSidebar();
+      }
+      function deleteChat(id) {
+        chats = chats.filter((c) => c.id !== id);
+        if (currentId === id) currentId = chats[0]?.id ?? null;
+        if (!currentId) newChat();
+        else {
+          saveStore();
+          renderHistory();
+          renderChat();
+        }
+      }
+      function autoTitle(chat, prompt) {
+        if (chat.title !== "New chat") return;
+        const t = prompt.replace(/\s+/g, " ").trim();
+        chat.title = t.length > 38 ? t.slice(0, 38) + "…" : t || "New chat";
+      }
 
-function logLine(kind, args) {
-  const colors = { log: "text-slate-300", warn: "text-amber-400", error: "text-red-400", result: "text-emerald-400", sys: "text-slate-500" };
-  if (consoleLines >= MAX_LINES) {
-    if (consoleLines === MAX_LINES) {
-      consoleLines++;
-      const cut = el("div", "text-amber-400", "");
-      cut.textContent = `⚠ output truncated at ${MAX_LINES} lines (memory guard)`;
-      $("#console").appendChild(cut);
-    }
-    return;
-  }
-  consoleLines++;
-  let text = args.map(a => {
-    if (typeof a === "string") return a;
-    try { return JSON.stringify(a, null, 2); } catch { return String(a); }
-  }).join(" ");
-  if (text.length > MAX_CHARS_PER_LINE) text = text.slice(0, MAX_CHARS_PER_LINE) + ` … [+${text.length - MAX_CHARS_PER_LINE} chars truncated]`;
-  const line = el("div", `whitespace-pre-wrap break-words ${colors[kind] || colors.log}`);
-  line.textContent = (kind === "error" ? "✖ " : kind === "warn" ? "⚠ " : kind === "result" ? "→ " : kind === "sys" ? "• " : "› ") + text;
-  $("#console").appendChild(line);
-  $("#console").scrollTop = $("#console").scrollHeight;
-}
+      function renderHistory() {
+        const list = $("#historyList");
+        list.innerHTML = "";
+        if (!chats.length) {
+          list.appendChild(
+            el("div", "px-3 py-6 text-center text-xs text-slate-500", "No conversations yet"),
+          );
+          return;
+        }
+        chats.forEach((c) => {
+          const active = c.id === currentId;
+          const row = el(
+            "div",
+            `group flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2 text-sm transition ${active ? "bg-brand-500/10 text-brand-700 dark:text-brand-200" : "hover:bg-slate-100 dark:hover:bg-white/5"}`,
+          );
+          const ico = el("i", "h-4 w-4 shrink-0");
+          ico.setAttribute("data-lucide", "message-square");
+          row.appendChild(ico);
+          const label = el("span", "min-w-0 flex-1 truncate");
+          label.textContent = c.title;
+          row.appendChild(label);
+          const del = el(
+            "button",
+            "opacity-0 group-hover:opacity-100 rounded p-1 hover:bg-red-500/15 hover:text-red-500",
+          );
+          del.innerHTML = '<i data-lucide="trash-2" class="h-3.5 w-3.5"></i>';
+          del.onclick = (e) => {
+            e.stopPropagation();
+            deleteChat(c.id);
+          };
+          row.appendChild(del);
+          row.onclick = () => {
+            currentId = c.id;
+            renderHistory();
+            renderChat();
+            closeSidebar();
+          };
+          list.appendChild(row);
+        });
+        icons();
+      }
 
-/* Worker source: user code never touches the main thread, so a runaway
+      /* ---------------- Chat rendering ---------------- */
+      function emptyState() {
+        const wrap = el(
+          "div",
+          "flex flex-col items-center justify-center gap-3 py-20 text-center animate-fadeup",
+        );
+        wrap.appendChild(
+          el(
+            "div",
+            "grid h-14 w-14 place-items-center rounded-2xl bg-brand-500 text-2xl font-bold text-white",
+            "B",
+          ),
+        );
+        wrap.appendChild(el("h1", "text-2xl font-semibold", "BroAI runs entirely on your device"));
+        wrap.appendChild(
+          el(
+            "p",
+            "max-w-md text-sm text-slate-500",
+            "Pick a model above, hit Load to stream the weights into your browser cache, then chat with zero servers involved.",
+          ),
+        );
+        const chips = el("div", "mt-2 flex flex-wrap justify-center gap-2");
+        [
+          "Explain WebGPU in simple terms",
+          "Write a JS debounce function",
+          "Summarize the pros of local LLMs",
+        ].forEach((p) => {
+          const b = el(
+            "button",
+            "rounded-full border border-slate-200 px-3 py-1.5 text-xs hover:bg-slate-100 dark:border-white/10 dark:hover:bg-white/5",
+            p,
+          );
+          b.onclick = () => {
+            $("#input").value = p;
+            send();
+          };
+          chips.appendChild(b);
+        });
+        wrap.appendChild(chips);
+        return wrap;
+      }
+
+      function messageNode(role, content) {
+        const row = el("div", `flex gap-3 animate-fadeup ${role === "user" ? "justify-end" : ""}`);
+        if (role === "assistant") {
+          const av = el(
+            "div",
+            "mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-brand-500 text-xs font-bold text-white",
+            "B",
+          );
+          row.appendChild(av);
+        }
+        const bubble = el(
+          "div",
+          role === "user"
+            ? "max-w-[85%] rounded-2xl rounded-br-sm bg-brand-500 px-4 py-2.5 text-sm text-white"
+            : "msg min-w-0 flex-1 text-sm leading-relaxed",
+        );
+        if (role === "user") bubble.textContent = content;
+        else renderMarkdown(bubble, content);
+        row.appendChild(bubble);
+        return { row, bubble };
+      }
+
+      function renderChat() {
+        const box = $("#chatInner");
+        box.innerHTML = "";
+        const chat = current();
+        if (!chat || !chat.messages.length) {
+          box.appendChild(emptyState());
+          icons();
+          return;
+        }
+        chat.messages.forEach((m) => box.appendChild(messageNode(m.role, m.content).row));
+        icons();
+        scrollToBottom(true);
+      }
+
+      /* ---------------- Preferences (streaming smoothness / motion) ---------------- */
+      const PREFS_KEY = "broai.prefs.v1";
+      const prefs = Object.assign(
+        { smoothness: 45, reduceMotion: false },
+        (() => {
+          try {
+            return JSON.parse(localStorage.getItem(PREFS_KEY) || "{}");
+          } catch {
+            return {};
+          }
+        })(),
+      );
+      function savePrefs() {
+        try {
+          localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+        } catch {}
+      }
+      function applyMotionPref() {
+        document.documentElement.classList.toggle("reduce-motion", !!prefs.reduceMotion);
+      }
+
+      let autoStick = true;
+      let programmaticScroll = false;
+      $("#chatScroll").addEventListener(
+        "scroll",
+        () => {
+          if (programmaticScroll) {
+            programmaticScroll = false;
+            return;
+          }
+          const s = $("#chatScroll");
+          // Any real user scroll away from the bottom detaches the view and keeps it stable.
+          autoStick = s.scrollHeight - s.scrollTop - s.clientHeight < 64;
+        },
+        { passive: true },
+      );
+
+      // Stick to the bottom without animation while streaming: no jerky jumps, and
+      // the position is only nudged when it actually drifted by a visible amount.
+      function scrollStick() {
+        if (!autoStick) return;
+        const s = $("#chatScroll");
+        const target = s.scrollHeight - s.clientHeight;
+        if (target - s.scrollTop < 1) return;
+        programmaticScroll = true;
+        s.scrollTop = target;
+      }
+      function scrollToBottom(force) {
+        if (!force && !autoStick) return;
+        const s = $("#chatScroll");
+        if (force) autoStick = true;
+        programmaticScroll = true;
+        s.scrollTop = s.scrollHeight - s.clientHeight;
+      }
+
+      /* ---------------- Engine ---------------- */
+      let engine = null,
+        loadedModel = null,
+        loading = false,
+        generating = false,
+        abortRequested = false;
+
+      function setProgress(show, text, pct) {
+        $("#progressBanner").classList.toggle("hidden", !show);
+        if (text != null) $("#progressText").textContent = text;
+        if (pct != null) {
+          $("#progressBar").style.width = `${Math.round(pct * 100)}%`;
+          $("#progressPct").textContent = `${Math.round(pct * 100)}%`;
+        }
+      }
+
+      async function detectGPU() {
+        if (!("gpu" in navigator)) {
+          $("#gpuStat").textContent = "unavailable";
+          $("#gpuStat").className = "font-mono text-red-500";
+          toast(
+            "WebGPU is not available in this browser. Use Chrome/Edge 113+ or Safari 18+ on a GPU-capable device.",
+            "error",
+          );
+          return false;
+        }
+        try {
+          const adapter = await navigator.gpu.requestAdapter();
+          if (!adapter) {
+            $("#gpuStat").textContent = "no adapter";
+            $("#gpuStat").className = "font-mono text-amber-500";
+            toast("WebGPU exists but no GPU adapter was found. Model loading will fail.", "warn");
+            return false;
+          }
+          $("#gpuStat").textContent = "accelerated";
+          $("#gpuStat").className = "font-mono text-emerald-500";
+          return true;
+        } catch (e) {
+          $("#gpuStat").textContent = "error";
+          $("#gpuStat").className = "font-mono text-red-500";
+          return false;
+        }
+      }
+
+      async function loadModel() {
+        if (loading) return;
+        const requested = $("#modelSelect").value;
+        const resolved = resolveModel(requested);
+        if (resolved !== requested)
+          toast(`“${requested}” has no MLC build — falling back to <b>${resolved}</b>.`, "warn");
+        if (engine && loadedModel === resolved) {
+          toast("Model already loaded", "ok");
+          return;
+        }
+        if (!(await detectGPU())) return;
+
+        loading = true;
+        $("#loadBtn").disabled = true;
+        $("#loadBtnText").textContent = "Loading…";
+
+        // Tell the user up-front whether this is a cold download or a warm cache hit.
+        let cached = false;
+        try {
+          cached = await webllm.hasModelInCache(resolved);
+        } catch {
+          cached = false;
+        }
+        const started = performance.now();
+        setProgress(
+          true,
+          cached
+            ? "Model found in browser cache — loading weights onto the GPU…"
+            : "First run: downloading model weights (this is a one-time multi-hundred-MB download)…",
+          0,
+        );
+        if (!cached)
+          toast(
+            "First load downloads the full model over the network. It is cached afterwards, so later loads take seconds.",
+            "info",
+          );
+
+        try {
+          if (engine) {
+            await engine.unload().catch(() => {});
+            engine = null;
+            loadedModel = null;
+          }
+          engine = await webllm.CreateMLCEngine(resolved, {
+            initProgressCallback: (r) => {
+              const pct = typeof r.progress === "number" ? r.progress : 0;
+              const elapsed = (performance.now() - started) / 1000;
+              const eta =
+                pct > 0.02 ? ` · ~${Math.max(0, Math.round(elapsed / pct - elapsed))}s left` : "";
+              setProgress(
+                true,
+                `${r.text || "Loading…"} · ${elapsed.toFixed(0)}s elapsed${eta}`,
+                pct,
+              );
+            },
+          });
+          loadedModel = resolved;
+          setProgress(true, `Ready in ${((performance.now() - started) / 1000).toFixed(1)}s`, 1);
+          setTimeout(() => setProgress(false), 1400);
+          $("#loadBtnText").textContent = "Loaded";
+          toast(`${resolved} is ready — running on your GPU.`, "ok");
+        } catch (e) {
+          console.error(e);
+          setProgress(false);
+          $("#loadBtnText").textContent = "Load";
+          toast(`Failed to load model: ${String(e?.message || e).slice(0, 180)}`, "error");
+        } finally {
+          loading = false;
+          $("#loadBtn").disabled = false;
+        }
+      }
+
+      async function send() {
+        const input = $("#input");
+        const text = input.value.trim();
+        if (!text || generating) return;
+        if (!engine) {
+          toast("Load a model first (button in the header).", "warn");
+          return;
+        }
+        const chat = current() || (newChat(), current());
+        input.value = "";
+        input.style.height = "auto";
+
+        autoTitle(chat, text);
+        chat.messages.push({ role: "user", content: text });
+        chat.updated = Date.now();
+        saveStore();
+        renderHistory();
+
+        const box = $("#chatInner");
+        if (box.querySelector("h1")) box.innerHTML = "";
+        box.appendChild(messageNode("user", text).row);
+        const { row, bubble } = messageNode("assistant", "");
+        bubble.classList.add("cursor-blink");
+        box.appendChild(row);
+        scrollToBottom(true);
+
+        generating = true;
+        abortRequested = false;
+        $("#sendBtn").classList.add("hidden");
+        $("#stopBtn").classList.remove("hidden");
+
+        let acc = "",
+          tokens = 0;
+        const start = performance.now();
+        const typer = createTyper(bubble);
+        try {
+          const stream = await engine.chat.completions.create({
+            stream: true,
+            temperature: 0.7,
+            max_tokens: 1536,
+            messages: [
+              {
+                role: "system",
+                content:
+                  "You are BroAI, a helpful, concise assistant running fully offline in the user's browser. Use markdown and fenced code blocks with language tags.",
+              },
+              ...chat.messages.map((m) => ({ role: m.role, content: m.content })),
+            ],
+          });
+          for await (const chunk of stream) {
+            if (abortRequested) {
+              await engine.interruptGenerate?.();
+              break;
+            }
+            const delta = chunk.choices?.[0]?.delta?.content || "";
+            if (!delta) continue;
+            acc += delta;
+            tokens++;
+            typer.push(delta);
+            const secs = (performance.now() - start) / 1000;
+            if (secs > 0.2) $("#tpsStat").textContent = `${(tokens / secs).toFixed(1)} t/s`;
+          }
+        } catch (e) {
+          console.error(e);
+          acc = acc || `**Generation failed:** ${String(e?.message || e)}`;
+          toast("Generation error — see console.", "error");
+        } finally {
+          await typer.finish(acc || "_(empty response)_");
+          bubble.classList.remove("cursor-blink");
+          chat.messages.push({ role: "assistant", content: acc });
+          chat.updated = Date.now();
+          saveStore();
+          renderHistory();
+          generating = false;
+          $("#sendBtn").classList.remove("hidden");
+          $("#stopBtn").classList.add("hidden");
+          scrollToBottom(false);
+        }
+      }
+
+      /* ---- Smooth typewriter: decouples token bursts from painting ---- */
+      function createTyper(bubble) {
+        let target = "",
+          shown = 0,
+          raf = 0,
+          last = 0,
+          done = null,
+          finalText = null,
+          acc = 0;
+        bubble.classList.add("cursor-blink");
+
+        const paint = () => {
+          renderMarkdown(bubble, target.slice(0, shown));
+          bubble.classList.add("cursor-blink");
+          scrollStick();
+        };
+
+        const step = (now) => {
+          const dt = Math.min(64, now - (last || now));
+          last = now;
+          const remaining = target.length - shown;
+          if (remaining > 0) {
+            // User-controlled smoothness: 0 = ultra smooth/slow, 100 = instant.
+            const s = prefs.smoothness / 100;
+            const base = 18 + s * s * 900; // chars/sec floor
+            const catchUp = remaining * (0.8 + s * 14); // never lag far behind
+            let cps = Math.max(base, Math.min(1400, catchUp));
+            if (prefs.reduceMotion) cps = Math.min(cps, 90);
+            acc += (cps * dt) / 1000;
+            const advance = Math.floor(acc);
+            if (advance >= 1) {
+              acc -= advance;
+              shown = Math.min(target.length, shown + advance);
+              paint();
+            }
+          }
+          if (finalText !== null && shown >= target.length) {
+            raf = 0;
+            renderMarkdown(bubble, finalText);
+            scrollStick();
+            done?.();
+            return;
+          }
+          raf = requestAnimationFrame(step);
+        };
+
+        const start = () => {
+          if (!raf) {
+            last = 0;
+            acc = 0;
+            raf = requestAnimationFrame(step);
+          }
+        };
+        start();
+
+        return {
+          push(delta) {
+            target += delta;
+            start();
+          },
+          finish(text) {
+            finalText = text;
+            target = text;
+            start();
+            return new Promise((res) => {
+              done = () => res();
+              // Safety net in case rAF is throttled (background tab).
+              setTimeout(() => {
+                if (raf) {
+                  cancelAnimationFrame(raf);
+                  raf = 0;
+                  renderMarkdown(bubble, text);
+                  res();
+                }
+              }, 4000);
+            });
+          },
+        };
+      }
+
+      /* ---------------- Sandbox ---------------- */
+      function openSandbox() {
+        $("#sandbox").classList.remove("translate-x-full");
+        $("#sandboxScrim").classList.remove("hidden");
+      }
+      function closeSandboxPanel() {
+        $("#sandbox").classList.add("translate-x-full");
+        $("#sandboxScrim").classList.add("hidden");
+      }
+
+      const MAX_LINES = 500; // console line cap
+      const MAX_CHARS_PER_LINE = 4000; // truncate huge payloads
+      let consoleLines = 0;
+
+      function logLine(kind, args) {
+        const colors = {
+          log: "text-slate-300",
+          warn: "text-amber-400",
+          error: "text-red-400",
+          result: "text-emerald-400",
+          sys: "text-slate-500",
+        };
+        if (consoleLines >= MAX_LINES) {
+          if (consoleLines === MAX_LINES) {
+            consoleLines++;
+            const cut = el("div", "text-amber-400", "");
+            cut.textContent = `⚠ output truncated at ${MAX_LINES} lines (memory guard)`;
+            $("#console").appendChild(cut);
+          }
+          return;
+        }
+        consoleLines++;
+        let text = args
+          .map((a) => {
+            if (typeof a === "string") return a;
+            try {
+              return JSON.stringify(a, null, 2);
+            } catch {
+              return String(a);
+            }
+          })
+          .join(" ");
+        if (text.length > MAX_CHARS_PER_LINE)
+          text =
+            text.slice(0, MAX_CHARS_PER_LINE) +
+            ` … [+${text.length - MAX_CHARS_PER_LINE} chars truncated]`;
+        const line = el("div", `whitespace-pre-wrap break-words ${colors[kind] || colors.log}`);
+        line.textContent =
+          (kind === "error"
+            ? "✖ "
+            : kind === "warn"
+              ? "⚠ "
+              : kind === "result"
+                ? "→ "
+                : kind === "sys"
+                  ? "• "
+                  : "› ") + text;
+        $("#console").appendChild(line);
+        $("#console").scrollTop = $("#console").scrollHeight;
+      }
+
+      /* Worker source: user code never touches the main thread, so a runaway
    loop can be terminated instead of freezing the tab. */
-const WORKER_SRC = `
+      const WORKER_SRC = `
 self.onmessage = async (e) => {
   const { code, maxMessages } = e.data;
   let sent = 0;
@@ -802,521 +1635,661 @@ self.onmessage = async (e) => {
 };
 `;
 
-let worker = null, workerTimer = null, memTimer = null, runStart = 0;
+      let worker = null,
+        workerTimer = null,
+        memTimer = null,
+        runStart = 0;
 
-function sandboxRunning(on) {
-  $("#runCode").classList.toggle("hidden", on);
-  $("#killCode").classList.toggle("hidden", !on);
-  $("#runStatus").textContent = on ? "running…" : "";
-}
-
-function stopSandbox(reason) {
-  if (!worker) return;
-  worker.terminate();
-  worker = null;
-  clearTimeout(workerTimer); clearInterval(memTimer);
-  sandboxRunning(false);
-  if (reason) logLine("error", [reason]);
-}
-
-function runSandbox() {
-  stopSandbox(null);
-  consoleLines = 0;
-  $("#console").innerHTML = "";
-  const code = $("#editor").value;
-  const timeoutMs = Number($("#timeLimit").value);
-  const memCapMb = Number($("#memLimit").value);
-  logLine("sys", [`run · time limit ${timeoutMs / 1000}s · memory cap ${memCapMb} MB · network disabled`]);
-
-  let url;
-  try {
-    url = URL.createObjectURL(new Blob([WORKER_SRC], { type: "text/javascript" }));
-    worker = new Worker(url);
-  } catch (err) {
-    logLine("error", ["Could not start sandbox worker: " + String(err)]);
-    return;
-  }
-  URL.revokeObjectURL(url);
-  sandboxRunning(true);
-  runStart = performance.now();
-
-  worker.onmessage = (e) => {
-    const { kind, args } = e.data || {};
-    if (kind === "__done") {
-      const ms = Math.round(performance.now() - runStart);
-      stopSandbox(null);
-      logLine("sys", [`finished in ${ms} ms`]);
-      return;
-    }
-    logLine(kind, args || []);
-  };
-  worker.onerror = (e) => { stopSandbox(null); logLine("error", [e.message || "Worker error"]); };
-  worker.postMessage({ code, maxMessages: MAX_LINES });
-
-
-  workerTimer = setTimeout(() => {
-    stopSandbox(`⏱ execution stopped: exceeded the ${timeoutMs / 1000}s time limit (possible infinite loop).`);
-    toast("Sandbox script timed out and was terminated.", "warn");
-  }, timeoutMs);
-
-  // Memory watchdog: if the tab's heap balloons while user code runs, kill it.
-  const baseline = performance.memory ? performance.memory.usedJSHeapSize : 0;
-  if (performance.memory) {
-    memTimer = setInterval(() => {
-      const usedMb = (performance.memory.usedJSHeapSize - baseline) / 1048576;
-      if (usedMb > memCapMb) {
-        stopSandbox(`💥 execution stopped: script allocated more than ${memCapMb} MB of memory.`);
-        toast("Sandbox script hit the memory cap and was terminated.", "warn");
-      }
-    }, 250);
-  }
-}
-
-
-/* ---------------- Theme ---------------- */
-function applyTheme(mode) {
-  document.documentElement.classList.toggle("dark", mode === "dark");
-  localStorage.setItem("broai.theme", mode);
-}
-
-/* ---------------- Stats ---------------- */
-setInterval(() => {
-  const mem = performance.memory;
-  if (mem) $("#ramStat").textContent = `${(mem.usedJSHeapSize / 1048576).toFixed(0)} MB`;
-  else $("#ramStat").textContent = "n/a";
-}, 1500);
-
-/* ---------------- Wiring ---------------- */
-function openSidebar() { $("#sidebar").classList.remove("-translate-x-full"); $("#scrim").classList.remove("hidden"); }
-function closeSidebar() { if (window.innerWidth < 1024) { $("#sidebar").classList.add("-translate-x-full"); $("#scrim").classList.add("hidden"); } }
-
-function buildModelSelect() {
-  const sel = $("#modelSelect");
-  Object.entries(CATALOG).forEach(([group, models]) => {
-    const og = el("optgroup"); og.label = group;
-    models.forEach(m => {
-      const o = el("option");
-      o.value = m.id;
-      const resolved = resolveModel(m.id);
-      o.textContent = `${m.label} · ${m.size}${resolved !== m.id ? " (fallback)" : ""}`;
-      og.appendChild(o);
-    });
-    sel.appendChild(og);
-  });
-  sel.value = localStorage.getItem("broai.model") || "SmolLM2-135M-Instruct-q0f16-MLC";
-  if (!sel.value) sel.selectedIndex = 0;
-  sel.onchange = () => { localStorage.setItem("broai.model", sel.value); $("#loadBtnText").textContent = "Load"; };
-}
-
-$("#openSidebar").onclick = openSidebar;
-$("#closeSidebar").onclick = closeSidebar;
-$("#scrim").onclick = closeSidebar;
-$("#newChat").onclick = newChat;
-$("#loadBtn").onclick = loadModel;
-$("#sendBtn").onclick = send;
-$("#stopBtn").onclick = () => { abortRequested = true; };
-
-/* ---------------- Image Lab: on-device + cloud generation ---------------- */
-const TFJS_URL = "https://esm.run/@huggingface/transformers@3.7.5";
-const IMG_TASKS = {
-  bg:      { label: "Removing background", max: 1024 },
-  upscale: { task: "image-to-image",   model: "Xenova/swin2SR-classical-sr-x2-64",      label: "Upscaling 2×",     max: 384 },
-  depth:   { task: "depth-estimation", model: "onnx-community/depth-anything-v2-small", label: "Estimating depth", max: 518 },
-  caption: { task: "image-to-text",    model: "Xenova/vit-gpt2-image-captioning",       label: "Describing image", max: 640 },
-};
-let tfjs = null;            // transformers.js module
-const imgPipes = new Map(); // key -> pipeline
-let rmbg = null;            // { model, processor }
-let imgBusy = false, imgSrcUrl = null, outUrl = null;
-
-function openImagelab() {
-  $("#imagelab").classList.remove("translate-x-full");
-  $("#imagelabScrim").classList.remove("hidden");
-}
-function closeImagelab() {
-  $("#imagelab").classList.add("translate-x-full");
-  $("#imagelabScrim").classList.add("hidden");
-}
-function imgProgress(text, pct) {
-  const box = $("#imgProgress");
-  if (pct === null) { box.classList.add("hidden"); return; }
-  box.classList.remove("hidden");
-  $("#imgProgressText").textContent = text;
-  $("#imgProgressPct").textContent = Math.round(pct) + "%";
-  $("#imgProgressBar").style.width = Math.max(2, Math.min(100, pct)) + "%";
-}
-$("#imgFile").addEventListener("change", (e) => {
-  const file = e.target.files && e.target.files[0];
-  if (!file) return;
-  if (imgSrcUrl) URL.revokeObjectURL(imgSrcUrl);
-  imgSrcUrl = URL.createObjectURL(file);
-  const node = $("#imgIn");
-  node.src = imgSrcUrl; node.classList.remove("hidden");
-  $("#imgInEmpty").classList.add("hidden");
-});
-
-/* ---- API keys (local only) ---- */
-const KEYS = { hf: "broai.hfKey", vid: "broai.vidKey" };
-function loadKeys() {
-  $("#hfKey").value = localStorage.getItem(KEYS.hf) || "";
-  $("#vidKey").value = localStorage.getItem(KEYS.vid) || "";
-}
-loadKeys();
-$("#saveKeys").onclick = () => {
-  localStorage.setItem(KEYS.hf, $("#hfKey").value.trim());
-  localStorage.setItem(KEYS.vid, $("#vidKey").value.trim());
-  toast("Keys saved in this browser only.", "ok");
-};
-$("#clearKeys").onclick = () => {
-  localStorage.removeItem(KEYS.hf); localStorage.removeItem(KEYS.vid);
-  loadKeys(); toast("Keys cleared.", "warn");
-};
-
-/* ---- Mode tabs ---- */
-function setMode(mode) {
-  document.querySelectorAll(".modeTab").forEach(b => {
-    const on = b.dataset.mode === mode;
-    b.classList.toggle("bg-white", on);
-    b.classList.toggle("dark:bg-white/10", on);
-    b.classList.toggle("shadow-sm", on);
-    b.classList.toggle("text-brand-600", on);
-  });
-  $("#panelLocal").classList.toggle("hidden", mode !== "local");
-  $("#panelCloud").classList.toggle("hidden", mode !== "cloud");
-  $("#panelVideo").classList.toggle("hidden", mode !== "video");
-  localStorage.setItem("broai.labMode", mode);
-}
-document.querySelectorAll(".modeTab").forEach(b => b.onclick = () => setMode(b.dataset.mode));
-setMode(localStorage.getItem("broai.labMode") || "local");
-
-$("#cloudModel").onchange = (e) => $("#cloudModelCustom").classList.toggle("hidden", e.target.value !== "__custom");
-$("#vidProvider").onchange = (e) => {
-  const custom = e.target.value === "custom";
-  $("#vidTargetLabel").textContent = custom ? "Endpoint URL" : "Model id";
-  $("#vidModel").value = custom ? "https://" : "Wan-AI/Wan2.1-T2V-1.3B-Diffusers";
-};
-
-/* ---- Output helpers ---- */
-function resetOutput() {
-  if (outUrl) { URL.revokeObjectURL(outUrl); outUrl = null; }
-  $("#imgOut").classList.add("hidden");
-  $("#vidOut").classList.add("hidden");
-  $("#imgText").classList.add("hidden");
-  $("#imgDownload").classList.add("hidden");
-  $("#imgOutEmpty").classList.remove("hidden");
-}
-function showOutput(url, kind) {
-  const node = kind === "video" ? $("#vidOut") : $("#imgOut");
-  node.src = url; node.classList.remove("hidden");
-  $("#imgOutEmpty").classList.add("hidden");
-  const dl = $("#imgDownload");
-  dl.href = url;
-  dl.setAttribute("download", kind === "video" ? "broai-video.mp4" : "broai-image.png");
-  dl.classList.remove("hidden");
-}
-
-/* Big inputs are the main cause of ONNX "Integer overflow" / OOM failures,
-   so every source image is normalised to a safe size first. */
-function loadImageEl(url) {
-  return new Promise((res, rej) => {
-    const im = new Image();
-    im.crossOrigin = "anonymous";
-    im.onload = () => res(im);
-    im.onerror = () => rej(new Error("Could not read that image file."));
-    im.src = url;
-  });
-}
-async function normalizedSource(url, maxSide) {
-  const im = await loadImageEl(url);
-  const scale = Math.min(1, maxSide / Math.max(im.naturalWidth, im.naturalHeight));
-  const w = Math.max(32, Math.round(im.naturalWidth * scale));
-  const h = Math.max(32, Math.round(im.naturalHeight * scale));
-  const cv = document.createElement("canvas");
-  cv.width = w; cv.height = h;
-  const ctx = cv.getContext("2d");
-  ctx.fillStyle = "#ffffff"; ctx.fillRect(0, 0, w, h); // flatten transparency
-  ctx.drawImage(im, 0, 0, w, h);
-  return cv.toDataURL("image/png");
-}
-
-async function ensureTfjs() {
-  if (!tfjs) {
-    tfjs = await import(TFJS_URL);
-    tfjs.env.allowLocalModels = false;
-  }
-  return tfjs;
-}
-const hasGPU = () => typeof navigator !== "undefined" && !!navigator.gpu;
-
-async function rawToUrl(raw) {
-  if (raw && typeof raw.toBlob === "function") {
-    const blob = await raw.toBlob();
-    outUrl = URL.createObjectURL(blob);
-    return outUrl;
-  }
-  const cv = raw?.toCanvas ? raw.toCanvas() : null;
-  if (cv) return cv.toDataURL("image/png");
-  throw new Error("Unsupported image output");
-}
-
-async function getPipe(key, cfg, device) {
-  const id = key + ":" + device;
-  let pipe = imgPipes.get(id);
-  if (pipe) return pipe;
-  pipe = await tfjs.pipeline(cfg.task, cfg.model, {
-    device,
-    dtype: "fp32",
-    progress_callback: (p) => {
-      if (p.status === "progress" && p.total) imgProgress(`Downloading ${p.file || "weights"}…`, (p.loaded / p.total) * 100);
-      else if (p.status === "ready") imgProgress("Model ready", 100);
-    },
-  });
-  imgPipes.set(id, pipe);
-  return pipe;
-}
-
-/* RMBG-1.4 has no "background-removal" pipeline mapping, so drive the
-   model + processor directly and composite the mask ourselves. */
-async function removeBackground(src) {
-  const { AutoModel, AutoProcessor, RawImage } = tfjs;
-  if (!rmbg) {
-    const model = await AutoModel.from_pretrained("briaai/RMBG-1.4", {
-      config: { model_type: "custom" },
-      dtype: "fp32",
-      progress_callback: (p) => {
-        if (p.status === "progress" && p.total) imgProgress(`Downloading ${p.file || "weights"}…`, (p.loaded / p.total) * 100);
-      },
-    });
-    const processor = await AutoProcessor.from_pretrained("briaai/RMBG-1.4", {
-      config: {
-        do_normalize: true, do_pad: false, do_rescale: true, do_resize: true,
-        image_mean: [0.5, 0.5, 0.5], image_std: [1, 1, 1],
-        feature_extractor_type: "ImageFeatureExtractor",
-        resample: 2, rescale_factor: 0.00392156862745098,
-        size: { width: 1024, height: 1024 },
-      },
-    });
-    rmbg = { model, processor };
-  }
-  const image = await RawImage.fromURL(src);
-  const { pixel_values } = await rmbg.processor(image);
-  const out = await rmbg.model({ input: pixel_values });
-  const tensor = out.output ?? Object.values(out)[0];
-  const mask = await RawImage.fromTensor(tensor[0].mul(255).to("uint8")).resize(image.width, image.height);
-
-  const cv = document.createElement("canvas");
-  cv.width = image.width; cv.height = image.height;
-  const ctx = cv.getContext("2d");
-  const bitmap = await loadImageEl(src);
-  ctx.drawImage(bitmap, 0, 0, cv.width, cv.height);
-  const data = ctx.getImageData(0, 0, cv.width, cv.height);
-  for (let i = 0; i < mask.data.length; i++) data.data[i * 4 + 3] = mask.data[i];
-  ctx.putImageData(data, 0, 0);
-  return cv.toDataURL("image/png");
-}
-
-async function runImageTask() {
-  if (imgBusy) return;
-  const key = $("#imgTask").value;
-  const cfg = IMG_TASKS[key];
-  if (!imgSrcUrl) { toast("Choose a source image first.", "warn"); return; }
-  imgBusy = true;
-  $("#imgRun").disabled = true;
-  resetOutput();
-  try {
-    imgProgress("Loading Transformers.js…", 3);
-    await ensureTfjs();
-    const src = await normalizedSource(imgSrcUrl, cfg.max);
-
-    if (key === "bg") {
-      imgProgress(cfg.label + "…", 100);
-      showOutput(await removeBackground(src), "image");
-    } else {
-      let out;
-      try {
-        const pipe = await getPipe(key, cfg, hasGPU() ? "webgpu" : "wasm");
-        imgProgress(cfg.label + "…", 100);
-        out = await pipe(src);
-      } catch (gpuErr) {
-        if (!hasGPU()) throw gpuErr;
-        console.warn("WebGPU run failed, retrying on CPU:", gpuErr);
-        imgProgress("GPU path failed — retrying on CPU…", 20);
-        const pipe = await getPipe(key, cfg, "wasm");
-        imgProgress(cfg.label + " (CPU)…", 100);
-        out = await pipe(src);
+      function sandboxRunning(on) {
+        $("#runCode").classList.toggle("hidden", on);
+        $("#killCode").classList.toggle("hidden", !on);
+        $("#runStatus").textContent = on ? "running…" : "";
       }
 
-      if (key === "caption") {
-        const text = Array.isArray(out) ? (out[0]?.generated_text || "") : (out.generated_text || "");
-        const node = $("#imgText");
-        node.textContent = text || "No description produced.";
+      function stopSandbox(reason) {
+        if (!worker) return;
+        worker.terminate();
+        worker = null;
+        clearTimeout(workerTimer);
+        clearInterval(memTimer);
+        sandboxRunning(false);
+        if (reason) logLine("error", [reason]);
+      }
+
+      function runSandbox() {
+        stopSandbox(null);
+        consoleLines = 0;
+        $("#console").innerHTML = "";
+        const code = $("#editor").value;
+        const timeoutMs = Number($("#timeLimit").value);
+        const memCapMb = Number($("#memLimit").value);
+        logLine("sys", [
+          `run · time limit ${timeoutMs / 1000}s · memory cap ${memCapMb} MB · network disabled`,
+        ]);
+
+        let url;
+        try {
+          url = URL.createObjectURL(new Blob([WORKER_SRC], { type: "text/javascript" }));
+          worker = new Worker(url);
+        } catch (err) {
+          logLine("error", ["Could not start sandbox worker: " + String(err)]);
+          return;
+        }
+        URL.revokeObjectURL(url);
+        sandboxRunning(true);
+        runStart = performance.now();
+
+        worker.onmessage = (e) => {
+          const { kind, args } = e.data || {};
+          if (kind === "__done") {
+            const ms = Math.round(performance.now() - runStart);
+            stopSandbox(null);
+            logLine("sys", [`finished in ${ms} ms`]);
+            return;
+          }
+          logLine(kind, args || []);
+        };
+        worker.onerror = (e) => {
+          stopSandbox(null);
+          logLine("error", [e.message || "Worker error"]);
+        };
+        worker.postMessage({ code, maxMessages: MAX_LINES });
+
+        workerTimer = setTimeout(() => {
+          stopSandbox(
+            `⏱ execution stopped: exceeded the ${timeoutMs / 1000}s time limit (possible infinite loop).`,
+          );
+          toast("Sandbox script timed out and was terminated.", "warn");
+        }, timeoutMs);
+
+        // Memory watchdog: if the tab's heap balloons while user code runs, kill it.
+        const baseline = performance.memory ? performance.memory.usedJSHeapSize : 0;
+        if (performance.memory) {
+          memTimer = setInterval(() => {
+            const usedMb = (performance.memory.usedJSHeapSize - baseline) / 1048576;
+            if (usedMb > memCapMb) {
+              stopSandbox(
+                `💥 execution stopped: script allocated more than ${memCapMb} MB of memory.`,
+              );
+              toast("Sandbox script hit the memory cap and was terminated.", "warn");
+            }
+          }, 250);
+        }
+      }
+
+      /* ---------------- Theme ---------------- */
+      function applyTheme(mode) {
+        document.documentElement.classList.toggle("dark", mode === "dark");
+        localStorage.setItem("broai.theme", mode);
+      }
+
+      /* ---------------- Stats ---------------- */
+      setInterval(() => {
+        const mem = performance.memory;
+        if (mem) $("#ramStat").textContent = `${(mem.usedJSHeapSize / 1048576).toFixed(0)} MB`;
+        else $("#ramStat").textContent = "n/a";
+      }, 1500);
+
+      /* ---------------- Wiring ---------------- */
+      function openSidebar() {
+        $("#sidebar").classList.remove("-translate-x-full");
+        $("#scrim").classList.remove("hidden");
+      }
+      function closeSidebar() {
+        if (window.innerWidth < 1024) {
+          $("#sidebar").classList.add("-translate-x-full");
+          $("#scrim").classList.add("hidden");
+        }
+      }
+
+      function buildModelSelect() {
+        const sel = $("#modelSelect");
+        Object.entries(CATALOG).forEach(([group, models]) => {
+          const og = el("optgroup");
+          og.label = group;
+          models.forEach((m) => {
+            const o = el("option");
+            o.value = m.id;
+            const resolved = resolveModel(m.id);
+            o.textContent = `${m.label} · ${m.size}${resolved !== m.id ? " (fallback)" : ""}`;
+            og.appendChild(o);
+          });
+          sel.appendChild(og);
+        });
+        sel.value = localStorage.getItem("broai.model") || "SmolLM2-135M-Instruct-q0f16-MLC";
+        if (!sel.value) sel.selectedIndex = 0;
+        sel.onchange = () => {
+          localStorage.setItem("broai.model", sel.value);
+          $("#loadBtnText").textContent = "Load";
+        };
+      }
+
+      $("#openSidebar").onclick = openSidebar;
+      $("#closeSidebar").onclick = closeSidebar;
+      $("#scrim").onclick = closeSidebar;
+      $("#newChat").onclick = newChat;
+      $("#loadBtn").onclick = loadModel;
+      $("#sendBtn").onclick = send;
+      $("#stopBtn").onclick = () => {
+        abortRequested = true;
+      };
+
+      /* ---------------- Image Lab: on-device + cloud generation ---------------- */
+      const TFJS_URL = "https://esm.run/@huggingface/transformers@3.7.5";
+      const IMG_TASKS = {
+        bg: { label: "Removing background", max: 1024 },
+        upscale: {
+          task: "image-to-image",
+          model: "Xenova/swin2SR-classical-sr-x2-64",
+          label: "Upscaling 2×",
+          max: 384,
+        },
+        depth: {
+          task: "depth-estimation",
+          model: "onnx-community/depth-anything-v2-small",
+          label: "Estimating depth",
+          max: 518,
+        },
+        caption: {
+          task: "image-to-text",
+          model: "Xenova/vit-gpt2-image-captioning",
+          label: "Describing image",
+          max: 640,
+        },
+      };
+      let tfjs = null; // transformers.js module
+      const imgPipes = new Map(); // key -> pipeline
+      let rmbg = null; // { model, processor }
+      let imgBusy = false,
+        imgSrcUrl = null,
+        outUrl = null;
+
+      function openImagelab() {
+        $("#imagelab").classList.remove("translate-x-full");
+        $("#imagelabScrim").classList.remove("hidden");
+      }
+      function closeImagelab() {
+        $("#imagelab").classList.add("translate-x-full");
+        $("#imagelabScrim").classList.add("hidden");
+      }
+      function imgProgress(text, pct) {
+        const box = $("#imgProgress");
+        if (pct === null) {
+          box.classList.add("hidden");
+          return;
+        }
+        box.classList.remove("hidden");
+        $("#imgProgressText").textContent = text;
+        $("#imgProgressPct").textContent = Math.round(pct) + "%";
+        $("#imgProgressBar").style.width = Math.max(2, Math.min(100, pct)) + "%";
+      }
+      $("#imgFile").addEventListener("change", (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        if (imgSrcUrl) URL.revokeObjectURL(imgSrcUrl);
+        imgSrcUrl = URL.createObjectURL(file);
+        const node = $("#imgIn");
+        node.src = imgSrcUrl;
         node.classList.remove("hidden");
-      } else {
-        const raw = key === "depth" ? out.depth : (Array.isArray(out) ? out[0] : out);
-        showOutput(await rawToUrl(raw), "image");
+        $("#imgInEmpty").classList.add("hidden");
+      });
+
+      /* ---- API keys (local only) ---- */
+      const KEYS = { hf: "broai.hfKey", vid: "broai.vidKey" };
+      function loadKeys() {
+        $("#hfKey").value = localStorage.getItem(KEYS.hf) || "";
+        $("#vidKey").value = localStorage.getItem(KEYS.vid) || "";
       }
-    }
-    imgProgress(null, null);
-    toast("Done — generated locally on your device.", "ok");
-  } catch (err) {
-    console.error(err);
-    imgProgress(null, null);
-    toast("Image task failed: " + (err?.message || err), "error");
-  } finally {
-    imgBusy = false;
-    $("#imgRun").disabled = false;
-    icons();
-  }
-}
+      loadKeys();
+      $("#saveKeys").onclick = () => {
+        localStorage.setItem(KEYS.hf, $("#hfKey").value.trim());
+        localStorage.setItem(KEYS.vid, $("#vidKey").value.trim());
+        toast("Keys saved in this browser only.", "ok");
+      };
+      $("#clearKeys").onclick = () => {
+        localStorage.removeItem(KEYS.hf);
+        localStorage.removeItem(KEYS.vid);
+        loadKeys();
+        toast("Keys cleared.", "warn");
+      };
 
-/* ---- Cloud generation (user's own API keys) ---- */
-async function providerError(res) {
-  let detail = "";
-  try {
-    const txt = await res.text();
-    try { detail = JSON.parse(txt).error || txt; } catch { detail = txt; }
-  } catch { /* ignore */ }
-  if (res.status === 401 || res.status === 403) return "Invalid or missing API key.";
-  if (res.status === 404) return "Model not found or not served by this provider.";
-  if (res.status === 429) return "Rate limited — try again shortly.";
-  if (res.status === 503) return "Model is warming up on the provider, retry in a moment.";
-  return `Provider error ${res.status}: ${String(detail).slice(0, 300)}`;
-}
+      /* ---- Mode tabs ---- */
+      function setMode(mode) {
+        document.querySelectorAll(".modeTab").forEach((b) => {
+          const on = b.dataset.mode === mode;
+          b.classList.toggle("bg-white", on);
+          b.classList.toggle("dark:bg-white/10", on);
+          b.classList.toggle("shadow-sm", on);
+          b.classList.toggle("text-brand-600", on);
+        });
+        $("#panelLocal").classList.toggle("hidden", mode !== "local");
+        $("#panelCloud").classList.toggle("hidden", mode !== "cloud");
+        $("#panelVideo").classList.toggle("hidden", mode !== "video");
+        localStorage.setItem("broai.labMode", mode);
+      }
+      document
+        .querySelectorAll(".modeTab")
+        .forEach((b) => (b.onclick = () => setMode(b.dataset.mode)));
+      setMode(localStorage.getItem("broai.labMode") || "local");
 
-async function runCloudImage() {
-  if (imgBusy) return;
-  const token = ($("#hfKey").value || localStorage.getItem(KEYS.hf) || "").trim();
-  const prompt = $("#cloudPrompt").value.trim();
-  const sel = $("#cloudModel").value;
-  const model = sel === "__custom" ? $("#cloudModelCustom").value.trim() : sel;
-  if (!token) { toast("Add your Hugging Face API key first.", "warn"); $("#keysBox").open = true; return; }
-  if (!model) { toast("Enter a model id.", "warn"); return; }
-  if (!prompt) { toast("Write a prompt first.", "warn"); return; }
-  imgBusy = true; $("#cloudRun").disabled = true; resetOutput();
-  try {
-    imgProgress("Generating on provider…", 45);
-    const res = await fetch(`https://router.huggingface.co/hf-inference/models/${model}`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "image/png" },
-      body: JSON.stringify({ inputs: prompt }),
-    });
-    if (!res.ok) throw new Error(await providerError(res));
-    const blob = await res.blob();
-    if (!blob.type.startsWith("image/")) throw new Error("Provider did not return an image.");
-    outUrl = URL.createObjectURL(blob);
-    showOutput(outUrl, "image");
-    imgProgress(null, null);
-    toast("Image generated.", "ok");
-  } catch (err) {
-    imgProgress(null, null);
-    toast("Image generation failed: " + (err?.message || err), "error");
-  } finally {
-    imgBusy = false; $("#cloudRun").disabled = false; icons();
-  }
-}
+      $("#cloudModel").onchange = (e) =>
+        $("#cloudModelCustom").classList.toggle("hidden", e.target.value !== "__custom");
+      $("#vidProvider").onchange = (e) => {
+        const custom = e.target.value === "custom";
+        $("#vidTargetLabel").textContent = custom ? "Endpoint URL" : "Model id";
+        $("#vidModel").value = custom ? "https://" : "Wan-AI/Wan2.1-T2V-1.3B-Diffusers";
+      };
 
-async function runCloudVideo() {
-  if (imgBusy) return;
-  const provider = $("#vidProvider").value;
-  const target = $("#vidModel").value.trim();
-  const prompt = $("#vidPrompt").value.trim();
-  const token = (($("#vidKey").value || localStorage.getItem(KEYS.vid) || "").trim())
-    || (provider === "hf" ? ($("#hfKey").value || localStorage.getItem(KEYS.hf) || "").trim() : "");
-  if (!token) { toast("Add your video generation API key first.", "warn"); $("#keysBox").open = true; return; }
-  if (!target) { toast(provider === "hf" ? "Enter a model id." : "Enter an endpoint URL.", "warn"); return; }
-  if (!prompt) { toast("Write a prompt first.", "warn"); return; }
-  imgBusy = true; $("#vidRun").disabled = true; resetOutput();
-  try {
-    imgProgress("Rendering video — this can take a few minutes…", 40);
-    const url = provider === "hf" ? `https://router.huggingface.co/hf-inference/models/${target}` : target;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ inputs: prompt, prompt }),
-    });
-    if (!res.ok) throw new Error(await providerError(res));
-    const type = res.headers.get("content-type") || "";
-    if (type.includes("application/json")) {
-      const data = await res.json();
-      const link = data.video_url || data.url || data.output?.[0] || data.output;
-      if (typeof link !== "string") throw new Error("Provider returned JSON without a video URL.");
-      showOutput(link, "video");
-    } else {
-      const blob = await res.blob();
-      outUrl = URL.createObjectURL(blob);
-      showOutput(outUrl, "video");
-    }
-    imgProgress(null, null);
-    toast("Video ready.", "ok");
-  } catch (err) {
-    imgProgress(null, null);
-    toast("Video generation failed: " + (err?.message || err), "error");
-  } finally {
-    imgBusy = false; $("#vidRun").disabled = false; icons();
-  }
-}
+      /* ---- Output helpers ---- */
+      function resetOutput() {
+        if (outUrl) {
+          URL.revokeObjectURL(outUrl);
+          outUrl = null;
+        }
+        $("#imgOut").classList.add("hidden");
+        $("#vidOut").classList.add("hidden");
+        $("#imgText").classList.add("hidden");
+        $("#imgDownload").classList.add("hidden");
+        $("#imgOutEmpty").classList.remove("hidden");
+      }
+      function showOutput(url, kind) {
+        const node = kind === "video" ? $("#vidOut") : $("#imgOut");
+        node.src = url;
+        node.classList.remove("hidden");
+        $("#imgOutEmpty").classList.add("hidden");
+        const dl = $("#imgDownload");
+        dl.href = url;
+        dl.setAttribute("download", kind === "video" ? "broai-video.mp4" : "broai-image.png");
+        dl.classList.remove("hidden");
+      }
 
-$("#imgRun").onclick = runImageTask;
-$("#cloudRun").onclick = runCloudImage;
-$("#vidRun").onclick = runCloudVideo;
-$("#closeImagelab").onclick = closeImagelab;
-$("#imagelabScrim").onclick = closeImagelab;
+      /* Big inputs are the main cause of ONNX "Integer overflow" / OOM failures,
+   so every source image is normalised to a safe size first. */
+      function loadImageEl(url) {
+        return new Promise((res, rej) => {
+          const im = new Image();
+          im.crossOrigin = "anonymous";
+          im.onload = () => res(im);
+          im.onerror = () => rej(new Error("Could not read that image file."));
+          im.src = url;
+        });
+      }
+      async function normalizedSource(url, maxSide) {
+        const im = await loadImageEl(url);
+        const scale = Math.min(1, maxSide / Math.max(im.naturalWidth, im.naturalHeight));
+        const w = Math.max(32, Math.round(im.naturalWidth * scale));
+        const h = Math.max(32, Math.round(im.naturalHeight * scale));
+        const cv = document.createElement("canvas");
+        cv.width = w;
+        cv.height = h;
+        const ctx = cv.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, w, h); // flatten transparency
+        ctx.drawImage(im, 0, 0, w, h);
+        return cv.toDataURL("image/png");
+      }
 
+      async function ensureTfjs() {
+        if (!tfjs) {
+          tfjs = await import(TFJS_URL);
+          tfjs.env.allowLocalModels = false;
+        }
+        return tfjs;
+      }
+      const hasGPU = () => typeof navigator !== "undefined" && !!navigator.gpu;
 
-$("#sandboxBtn").onclick = openSandbox;
-$("#imageBtn").onclick = openImagelab;
-$("#closeSandbox").onclick = closeSandboxPanel;
-$("#sandboxScrim").onclick = closeSandboxPanel;
-$("#runCode").onclick = runSandbox;
-$("#killCode").onclick = () => { stopSandbox("⏹ stopped by user."); };
-$("#clearConsole").onclick = () => { $("#console").innerHTML = ""; consoleLines = 0; };
+      async function rawToUrl(raw) {
+        if (raw && typeof raw.toBlob === "function") {
+          const blob = await raw.toBlob();
+          outUrl = URL.createObjectURL(blob);
+          return outUrl;
+        }
+        const cv = raw?.toCanvas ? raw.toCanvas() : null;
+        if (cv) return cv.toDataURL("image/png");
+        throw new Error("Unsupported image output");
+      }
 
-/* ---- Streaming smoothness + reduce motion ---- */
-function smoothLabel(v) {
-  if (prefs.reduceMotion) return "reduced";
-  if (v >= 95) return "instant";
-  if (v >= 70) return "fast";
-  if (v >= 40) return "balanced";
-  if (v >= 15) return "smooth";
-  return "smoothest";
-}
-function syncPrefsUI() {
-  $("#smoothRange").value = prefs.smoothness;
-  $("#reduceMotion").checked = !!prefs.reduceMotion;
-  $("#smoothVal").textContent = smoothLabel(prefs.smoothness);
-  applyMotionPref();
-}
-$("#smoothRange").addEventListener("input", (e) => {
-  prefs.smoothness = Number(e.target.value);
-  $("#smoothVal").textContent = smoothLabel(prefs.smoothness);
-  savePrefs();
-});
-$("#reduceMotion").addEventListener("change", (e) => {
-  prefs.reduceMotion = e.target.checked;
-  savePrefs(); syncPrefsUI();
-  toast(prefs.reduceMotion ? "Reduced motion on — text streams slowly and steadily." : "Reduced motion off.", "info");
-});
+      async function getPipe(key, cfg, device) {
+        const id = key + ":" + device;
+        let pipe = imgPipes.get(id);
+        if (pipe) return pipe;
+        pipe = await tfjs.pipeline(cfg.task, cfg.model, {
+          device,
+          dtype: "fp32",
+          progress_callback: (p) => {
+            if (p.status === "progress" && p.total)
+              imgProgress(`Downloading ${p.file || "weights"}…`, (p.loaded / p.total) * 100);
+            else if (p.status === "ready") imgProgress("Model ready", 100);
+          },
+        });
+        imgPipes.set(id, pipe);
+        return pipe;
+      }
 
-/* ---- Clear chat / clear history ---- */
-$("#clearChat").onclick = () => {
-  const chat = current();
-  if (!chat || !chat.messages.length) { toast("This chat is already empty.", "info"); return; }
-  if (!confirm("Clear all messages in this chat?")) return;
-  chat.messages = []; chat.title = "New chat"; chat.updated = Date.now();
-  saveStore(); renderHistory(); renderChat();
-  toast("Chat cleared.", "ok");
-};
-$("#clearHistory").onclick = () => {
-  if (!confirm("Delete every saved conversation? This cannot be undone.")) return;
-  chats = []; currentId = null;
-  try { localStorage.removeItem(STORE_KEY); } catch {}
-  newChat();
-  toast("All conversation history deleted.", "ok");
-};
+      /* RMBG-1.4 has no "background-removal" pipeline mapping, so drive the
+   model + processor directly and composite the mask ourselves. */
+      async function removeBackground(src) {
+        const { AutoModel, AutoProcessor, RawImage } = tfjs;
+        if (!rmbg) {
+          const model = await AutoModel.from_pretrained("briaai/RMBG-1.4", {
+            config: { model_type: "custom" },
+            dtype: "fp32",
+            progress_callback: (p) => {
+              if (p.status === "progress" && p.total)
+                imgProgress(`Downloading ${p.file || "weights"}…`, (p.loaded / p.total) * 100);
+            },
+          });
+          const processor = await AutoProcessor.from_pretrained("briaai/RMBG-1.4", {
+            config: {
+              do_normalize: true,
+              do_pad: false,
+              do_rescale: true,
+              do_resize: true,
+              image_mean: [0.5, 0.5, 0.5],
+              image_std: [1, 1, 1],
+              feature_extractor_type: "ImageFeatureExtractor",
+              resample: 2,
+              rescale_factor: 0.00392156862745098,
+              size: { width: 1024, height: 1024 },
+            },
+          });
+          rmbg = { model, processor };
+        }
+        const image = await RawImage.fromURL(src);
+        const { pixel_values } = await rmbg.processor(image);
+        const out = await rmbg.model({ input: pixel_values });
+        const tensor = out.output ?? Object.values(out)[0];
+        const mask = await RawImage.fromTensor(tensor[0].mul(255).to("uint8")).resize(
+          image.width,
+          image.height,
+        );
 
-/* ---- About / Help / Readme / License ---- */
-const INFO = {
-  about: { title: "About BroAI", body: `
+        const cv = document.createElement("canvas");
+        cv.width = image.width;
+        cv.height = image.height;
+        const ctx = cv.getContext("2d");
+        const bitmap = await loadImageEl(src);
+        ctx.drawImage(bitmap, 0, 0, cv.width, cv.height);
+        const data = ctx.getImageData(0, 0, cv.width, cv.height);
+        for (let i = 0; i < mask.data.length; i++) data.data[i * 4 + 3] = mask.data[i];
+        ctx.putImageData(data, 0, 0);
+        return cv.toDataURL("image/png");
+      }
+
+      async function runImageTask() {
+        if (imgBusy) return;
+        const key = $("#imgTask").value;
+        const cfg = IMG_TASKS[key];
+        if (!imgSrcUrl) {
+          toast("Choose a source image first.", "warn");
+          return;
+        }
+        imgBusy = true;
+        $("#imgRun").disabled = true;
+        resetOutput();
+        try {
+          imgProgress("Loading Transformers.js…", 3);
+          await ensureTfjs();
+          const src = await normalizedSource(imgSrcUrl, cfg.max);
+
+          if (key === "bg") {
+            imgProgress(cfg.label + "…", 100);
+            showOutput(await removeBackground(src), "image");
+          } else {
+            let out;
+            try {
+              const pipe = await getPipe(key, cfg, hasGPU() ? "webgpu" : "wasm");
+              imgProgress(cfg.label + "…", 100);
+              out = await pipe(src);
+            } catch (gpuErr) {
+              if (!hasGPU()) throw gpuErr;
+              console.warn("WebGPU run failed, retrying on CPU:", gpuErr);
+              imgProgress("GPU path failed — retrying on CPU…", 20);
+              const pipe = await getPipe(key, cfg, "wasm");
+              imgProgress(cfg.label + " (CPU)…", 100);
+              out = await pipe(src);
+            }
+
+            if (key === "caption") {
+              const text = Array.isArray(out)
+                ? out[0]?.generated_text || ""
+                : out.generated_text || "";
+              const node = $("#imgText");
+              node.textContent = text || "No description produced.";
+              node.classList.remove("hidden");
+            } else {
+              const raw = key === "depth" ? out.depth : Array.isArray(out) ? out[0] : out;
+              showOutput(await rawToUrl(raw), "image");
+            }
+          }
+          imgProgress(null, null);
+          toast("Done — generated locally on your device.", "ok");
+        } catch (err) {
+          console.error(err);
+          imgProgress(null, null);
+          toast("Image task failed: " + (err?.message || err), "error");
+        } finally {
+          imgBusy = false;
+          $("#imgRun").disabled = false;
+          icons();
+        }
+      }
+
+      /* ---- Cloud generation (user's own API keys) ---- */
+      async function providerError(res) {
+        let detail = "";
+        try {
+          const txt = await res.text();
+          try {
+            detail = JSON.parse(txt).error || txt;
+          } catch {
+            detail = txt;
+          }
+        } catch {
+          /* ignore */
+        }
+        if (res.status === 401 || res.status === 403) return "Invalid or missing API key.";
+        if (res.status === 404) return "Model not found or not served by this provider.";
+        if (res.status === 429) return "Rate limited — try again shortly.";
+        if (res.status === 503) return "Model is warming up on the provider, retry in a moment.";
+        return `Provider error ${res.status}: ${String(detail).slice(0, 300)}`;
+      }
+
+      async function runCloudImage() {
+        if (imgBusy) return;
+        const token = ($("#hfKey").value || localStorage.getItem(KEYS.hf) || "").trim();
+        const prompt = $("#cloudPrompt").value.trim();
+        const sel = $("#cloudModel").value;
+        const model = sel === "__custom" ? $("#cloudModelCustom").value.trim() : sel;
+        if (!token) {
+          toast("Add your Hugging Face API key first.", "warn");
+          $("#keysBox").open = true;
+          return;
+        }
+        if (!model) {
+          toast("Enter a model id.", "warn");
+          return;
+        }
+        if (!prompt) {
+          toast("Write a prompt first.", "warn");
+          return;
+        }
+        imgBusy = true;
+        $("#cloudRun").disabled = true;
+        resetOutput();
+        try {
+          imgProgress("Generating on provider…", 45);
+          const res = await fetch(`https://router.huggingface.co/hf-inference/models/${model}`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+              Accept: "image/png",
+            },
+            body: JSON.stringify({ inputs: prompt }),
+          });
+          if (!res.ok) throw new Error(await providerError(res));
+          const blob = await res.blob();
+          if (!blob.type.startsWith("image/")) throw new Error("Provider did not return an image.");
+          outUrl = URL.createObjectURL(blob);
+          showOutput(outUrl, "image");
+          imgProgress(null, null);
+          toast("Image generated.", "ok");
+        } catch (err) {
+          imgProgress(null, null);
+          toast("Image generation failed: " + (err?.message || err), "error");
+        } finally {
+          imgBusy = false;
+          $("#cloudRun").disabled = false;
+          icons();
+        }
+      }
+
+      async function runCloudVideo() {
+        if (imgBusy) return;
+        const provider = $("#vidProvider").value;
+        const target = $("#vidModel").value.trim();
+        const prompt = $("#vidPrompt").value.trim();
+        const token =
+          ($("#vidKey").value || localStorage.getItem(KEYS.vid) || "").trim() ||
+          (provider === "hf"
+            ? ($("#hfKey").value || localStorage.getItem(KEYS.hf) || "").trim()
+            : "");
+        if (!token) {
+          toast("Add your video generation API key first.", "warn");
+          $("#keysBox").open = true;
+          return;
+        }
+        if (!target) {
+          toast(provider === "hf" ? "Enter a model id." : "Enter an endpoint URL.", "warn");
+          return;
+        }
+        if (!prompt) {
+          toast("Write a prompt first.", "warn");
+          return;
+        }
+        imgBusy = true;
+        $("#vidRun").disabled = true;
+        resetOutput();
+        try {
+          imgProgress("Rendering video — this can take a few minutes…", 40);
+          const url =
+            provider === "hf"
+              ? `https://router.huggingface.co/hf-inference/models/${target}`
+              : target;
+          const res = await fetch(url, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ inputs: prompt, prompt }),
+          });
+          if (!res.ok) throw new Error(await providerError(res));
+          const type = res.headers.get("content-type") || "";
+          if (type.includes("application/json")) {
+            const data = await res.json();
+            const link = data.video_url || data.url || data.output?.[0] || data.output;
+            if (typeof link !== "string")
+              throw new Error("Provider returned JSON without a video URL.");
+            showOutput(link, "video");
+          } else {
+            const blob = await res.blob();
+            outUrl = URL.createObjectURL(blob);
+            showOutput(outUrl, "video");
+          }
+          imgProgress(null, null);
+          toast("Video ready.", "ok");
+        } catch (err) {
+          imgProgress(null, null);
+          toast("Video generation failed: " + (err?.message || err), "error");
+        } finally {
+          imgBusy = false;
+          $("#vidRun").disabled = false;
+          icons();
+        }
+      }
+
+      $("#imgRun").onclick = runImageTask;
+      $("#cloudRun").onclick = runCloudImage;
+      $("#vidRun").onclick = runCloudVideo;
+      $("#closeImagelab").onclick = closeImagelab;
+      $("#imagelabScrim").onclick = closeImagelab;
+
+      $("#sandboxBtn").onclick = openSandbox;
+      $("#imageBtn").onclick = openImagelab;
+      $("#closeSandbox").onclick = closeSandboxPanel;
+      $("#sandboxScrim").onclick = closeSandboxPanel;
+      $("#runCode").onclick = runSandbox;
+      $("#killCode").onclick = () => {
+        stopSandbox("⏹ stopped by user.");
+      };
+      $("#clearConsole").onclick = () => {
+        $("#console").innerHTML = "";
+        consoleLines = 0;
+      };
+
+      /* ---- Streaming smoothness + reduce motion ---- */
+      function smoothLabel(v) {
+        if (prefs.reduceMotion) return "reduced";
+        if (v >= 95) return "instant";
+        if (v >= 70) return "fast";
+        if (v >= 40) return "balanced";
+        if (v >= 15) return "smooth";
+        return "smoothest";
+      }
+      function syncPrefsUI() {
+        $("#smoothRange").value = prefs.smoothness;
+        $("#reduceMotion").checked = !!prefs.reduceMotion;
+        $("#smoothVal").textContent = smoothLabel(prefs.smoothness);
+        applyMotionPref();
+      }
+      $("#smoothRange").addEventListener("input", (e) => {
+        prefs.smoothness = Number(e.target.value);
+        $("#smoothVal").textContent = smoothLabel(prefs.smoothness);
+        savePrefs();
+      });
+      $("#reduceMotion").addEventListener("change", (e) => {
+        prefs.reduceMotion = e.target.checked;
+        savePrefs();
+        syncPrefsUI();
+        toast(
+          prefs.reduceMotion
+            ? "Reduced motion on — text streams slowly and steadily."
+            : "Reduced motion off.",
+          "info",
+        );
+      });
+
+      /* ---- Clear chat / clear history ---- */
+      $("#clearChat").onclick = () => {
+        const chat = current();
+        if (!chat || !chat.messages.length) {
+          toast("This chat is already empty.", "info");
+          return;
+        }
+        if (!confirm("Clear all messages in this chat?")) return;
+        chat.messages = [];
+        chat.title = "New chat";
+        chat.updated = Date.now();
+        saveStore();
+        renderHistory();
+        renderChat();
+        toast("Chat cleared.", "ok");
+      };
+      $("#clearHistory").onclick = () => {
+        if (!confirm("Delete every saved conversation? This cannot be undone.")) return;
+        chats = [];
+        currentId = null;
+        try {
+          localStorage.removeItem(STORE_KEY);
+        } catch {}
+        newChat();
+        toast("All conversation history deleted.", "ok");
+      };
+
+      /* ---- About / Help / Readme / License ---- */
+      const INFO = {
+        about: {
+          title: "About BroAI",
+          body: `
 ## Private AI, on your machine
 **BroAI** runs open-weight language models **100% inside your browser** using **WebGPU**. Prompts, responses and model weights never leave your device — there is no server, no account and no tracking.
 
@@ -1324,8 +2297,11 @@ const INFO = {
 - Inference happens on your own GPU via \`@mlc-ai/web-llm\`.
 - Conversations are stored only in \`localStorage\` on this device.
 
-Built for people who want useful AI without handing their data to anyone.` },
-  help: { title: "Help & shortcuts", body: `
+Built for people who want useful AI without handing their data to anyone.`,
+        },
+        help: {
+          title: "Help & shortcuts",
+          body: `
 ## Getting started
 1. Pick a model from the header dropdown — the **Micro & Instant** group loads fastest.
 2. Press **Load**. The first load downloads the weights; later loads come from cache in seconds.
@@ -1340,8 +2316,11 @@ Built for people who want useful AI without handing their data to anyone.` },
 
 ## Troubleshooting
 - *WebGPU unavailable*: use Chrome/Edge 113+, or Safari 18+, on a GPU-capable device.
-- *Loading is slow*: you're downloading weights for the first time. Pick a smaller model or let the download finish once.` },
-  readme: { title: "Read me", body: `
+- *Loading is slow*: you're downloading weights for the first time. Pick a smaller model or let the download finish once.`,
+        },
+        readme: {
+          title: "Read me",
+          body: `
 # BroAI — 100% Client-Side Local Browser AI Engine
 
 **BroAI** is a private, lightweight, client-side web application that executes Large Language Models (LLMs) directly in your browser using **WebGPU** and the \`@mlc-ai/web-llm\` inference engine. No external API keys, server infrastructure, or data collection required — everything runs locally on your hardware.
@@ -1382,8 +2361,11 @@ Built for people who want useful AI without handing their data to anyone.` },
 ├── index.html          # Entire single-file application (UI, styles, and engine logic)
 ├── README.md           # Project documentation
 └── LICENSE             # Software license & usage rights
-\`\`\`` },
-  license: { title: "License", body: `
+\`\`\``,
+        },
+        license: {
+          title: "License",
+          body: `
 ## COPYRIGHT AND PROPRIETARY RIGHTS NOTICE
 Copyright (c) 2026 Chaitanya Lalit Patil. All rights reserved.
 
@@ -1402,37 +2384,59 @@ c. Reverse engineer, decompile, or attempt to derive the underlying source code 
 **4. NO WARRANTY**
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-Model weights are distributed under their own upstream licenses.` }
-};
-function openInfo(key) {
-  const info = INFO[key] || INFO.about;
-  $("#infoTitle").textContent = info.title;
-  renderMarkdown($("#infoBody"), info.body);
-  $("#infoModal").classList.remove("hidden");
-  $("#infoModal").classList.add("flex");
-  icons();
-}
-function closeInfo() { $("#infoModal").classList.add("hidden"); $("#infoModal").classList.remove("flex"); }
-document.querySelectorAll("[data-info]").forEach(b => { b.onclick = () => openInfo(b.dataset.info); });
-$("#closeInfo").onclick = closeInfo;
-$("#infoModal").addEventListener("click", (e) => { if (e.target === $("#infoModal")) closeInfo(); });
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeInfo(); });
+Model weights are distributed under their own upstream licenses.`,
+        },
+      };
+      function openInfo(key) {
+        const info = INFO[key] || INFO.about;
+        $("#infoTitle").textContent = info.title;
+        renderMarkdown($("#infoBody"), info.body);
+        $("#infoModal").classList.remove("hidden");
+        $("#infoModal").classList.add("flex");
+        icons();
+      }
+      function closeInfo() {
+        $("#infoModal").classList.add("hidden");
+        $("#infoModal").classList.remove("flex");
+      }
+      document.querySelectorAll("[data-info]").forEach((b) => {
+        b.onclick = () => openInfo(b.dataset.info);
+      });
+      $("#closeInfo").onclick = closeInfo;
+      $("#infoModal").addEventListener("click", (e) => {
+        if (e.target === $("#infoModal")) closeInfo();
+      });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") closeInfo();
+      });
 
-$("#themeBtn").onclick = () => applyTheme(document.documentElement.classList.contains("dark") ? "light" : "dark");
-$("#input").addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
-});
-$("#input").addEventListener("input", (e) => { e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 160) + "px"; });
+      $("#themeBtn").onclick = () =>
+        applyTheme(document.documentElement.classList.contains("dark") ? "light" : "dark");
+      $("#input").addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          send();
+        }
+      });
+      $("#input").addEventListener("input", (e) => {
+        e.target.style.height = "auto";
+        e.target.style.height = Math.min(e.target.scrollHeight, 160) + "px";
+      });
 
-/* ---------------- Boot ---------------- */
-applyTheme(localStorage.getItem("broai.theme") || "dark");
-syncPrefsUI();
-buildModelSelect();
-loadStore();
-if (!chats.length) newChat(); else { currentId = chats[0].id; renderHistory(); renderChat(); }
-icons();
-detectGPU();
-window.__broaiRunSandbox = runSandbox;
-</script>
-</body>
+      /* ---------------- Boot ---------------- */
+      applyTheme(localStorage.getItem("broai.theme") || "dark");
+      syncPrefsUI();
+      buildModelSelect();
+      loadStore();
+      if (!chats.length) newChat();
+      else {
+        currentId = chats[0].id;
+        renderHistory();
+        renderChat();
+      }
+      icons();
+      detectGPU();
+      window.__broaiRunSandbox = runSandbox;
+    </script>
+  </body>
 </html>

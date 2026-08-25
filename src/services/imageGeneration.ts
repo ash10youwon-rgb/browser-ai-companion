@@ -1,86 +1,64 @@
-/**
- * Real AI Image Generation Engine
- * Supports real-time text-to-image synthesis using high-performance AI diffusion models
- * and local WebGL/Canvas image manipulation (upscaling, depth map extraction, background knockout).
- */
+import {
+  SmartImageEngine,
+  type GenerateResult,
+  type SmartImageBackend,
+  type GenerateOptions,
+} from "smart-image-engine";
 
-export interface ImageGenOptions {
+let engineInstance: SmartImageEngine | null = null;
+let engineInitPromise: Promise<SmartImageBackend> | null = null;
+
+export function getSmartImageEngine(
+  onProgress?: (status: string, progress?: number) => void,
+): SmartImageEngine {
+  if (!engineInstance) {
+    engineInstance = new SmartImageEngine({
+      onProgress: (status, progress) => {
+        onProgress?.(status, progress);
+      },
+    });
+  }
+  return engineInstance;
+}
+
+export async function initSmartImageEngine(
+  onProgress?: (status: string, progress?: number) => void,
+): Promise<SmartImageBackend> {
+  const engine = getSmartImageEngine(onProgress);
+  if (engine.isInitialized) {
+    return engine.currentBackend;
+  }
+  if (!engineInitPromise) {
+    engineInitPromise = engine.init();
+  }
+  return engineInitPromise;
+}
+
+export interface SmartImageGenerateParams {
   prompt: string;
-  negativePrompt?: string;
   width?: number;
   height?: number;
   seed?: number;
-  model?: "flux" | "turbo" | "flux-realism" | "flux-anime" | "flux-3d";
-  enhance?: boolean;
+  numInferenceSteps?: number;
+  onProgress?: (status: string, progress?: number) => void;
 }
 
-export async function generateAiImage(options: ImageGenOptions): Promise<string> {
-  const {
-    prompt,
-    width = 768,
-    height = 768,
-    seed = Math.floor(Math.random() * 1000000),
-    model = "flux",
-    enhance = true,
-  } = options;
+export async function generateSmartImage(
+  params: SmartImageGenerateParams,
+): Promise<GenerateResult> {
+  const engine = getSmartImageEngine(params.onProgress);
+  if (!engine.isInitialized) {
+    await initSmartImageEngine(params.onProgress);
+  }
 
-  const cleanPrompt = encodeURIComponent(
-    prompt.trim() + (enhance ? ", masterpiece, 8k resolution, photorealistic" : ""),
-  );
+  const options: GenerateOptions = {
+    width: params.width ?? 1024,
+    height: params.height ?? 1024,
+    seed: params.seed ?? Math.floor(Math.random() * 1000000),
+    numInferenceSteps: params.numInferenceSteps ?? 1,
+  };
 
-  // Pollinations Flux Real AI Engine URL with no-watermark
-  const url = `https://image.pollinations.ai/prompt/${cleanPrompt}?width=${width}&height=${height}&seed=${seed}&model=${model}&nologo=true`;
-
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => resolve(url);
-    img.onerror = () => {
-      // Fallback to high quality curated AI visual if network fails
-      resolve(
-        `https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=${width}&q=80`,
-      );
-    };
-    img.src = url;
-  });
+  return await engine.generate(params.prompt, options);
 }
 
-/**
- * Applies local canvas depth-map generation simulation using luminance & gradient shaders
- */
-export function generateLocalDepthMap(sourceImgSrc: string): Promise<string> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return resolve(sourceImgSrc);
-
-      ctx.drawImage(img, 0, 0);
-      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const data = imgData.data;
-
-      for (let i = 0; i < data.length; i += 4) {
-        // Luminance calculation
-        const r = data[i]!;
-        const g = data[i + 1]!;
-        const b = data[i + 2]!;
-        const gray = 0.299 * r + 0.587 * g + 0.114 * b;
-
-        // Depth inversion styling (closer is brighter)
-        const depthVal = Math.min(255, Math.max(0, 255 - gray * 0.85));
-        data[i] = depthVal;
-        data[i + 1] = depthVal;
-        data[i + 2] = depthVal;
-      }
-
-      ctx.putImageData(imgData, 0, 0);
-      resolve(canvas.toDataURL("image/png"));
-    };
-    img.onerror = () => resolve(sourceImgSrc);
-    img.src = sourceImgSrc;
-  });
-}
+export type { GenerateResult, SmartImageBackend };

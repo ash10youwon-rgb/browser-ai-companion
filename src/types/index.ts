@@ -1,5 +1,5 @@
 export type TabType =
-  "chat" | "image-lab" | "models" | "code-sandbox" | "settings" | "history" | "about";
+  "chat" | "image-lab" | "video-lab" | "models" | "code-sandbox" | "settings" | "history" | "about";
 
 export interface ModelInfo {
   id: string;
