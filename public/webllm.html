@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <base href="https://cdn.jsdelivr.net/">
+  <title>WebLLM Studio & Autonomous AI Agent</title>
+  
+  <!-- URL Construction Polyfill Guard for iFrames and Sandbox environments -->
+  <script>
+    (function() {
+      const NativeURL = window.URL;
+      
+      function sanitizeBase(base) {
+        if (!base || base === 'about:blank' || base === 'about:srcdoc') {
+          return 'https://cdn.jsdelivr.net/';
+        }
+        if (typeof base === 'string') {
+          if (!base.includes('://') && !base.startsWith('blob:')) {
+            return 'https://cdn.jsdelivr.net/';
+          }
+        }
+        return base;
+      }
+
+      class SafeURL extends NativeURL {
+        constructor(url, base) {
+          const safeBase = sanitizeBase(base);
+          try {
+            super(url, safeBase);
+          } catch (e1) {
+            try {
+              super(url, 'https://cdn.jsdelivr.net/');
+            } catch (e2) {
+              super(url);
+            }
+          }
+        }
+      }
+
+      // Preserve static methods required by WebLLM for Web Workers & WebAssembly
+      Object.defineProperty(SafeURL, 'createObjectURL', {
+        value: function(blob) { return NativeURL.createObjectURL(blob); },
+        writable: true,
+        configurable: true
+      });
+      Object.defineProperty(SafeURL, 'revokeObjectURL', {
+        value: function(url) { return NativeURL.revokeObjectURL(url); },
+        writable: true,
+        configurable: true
+      });
+
+      window.URL = SafeURL;
+    })();
+  </script>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0f9ff',
+              100: '#e0f2fe',
+              500: '#0ea5e9',
+              600: '#0284c7',
+              700: '#0369a1',
+              900: '#0c4a6e',
+            },
+            darkbg: '#0b0f17',
+            darkcard: '#151c28',
+            darkborder: '#26334d'
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Marked.js for Markdown -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+  <!-- Highlight.js for Syntax Highlighting -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+  <!-- Custom Scrollbar & Utility Styles -->
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Fira+Code:wght@400;500&display=swap');
+    
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+    }
+    code, pre {
+      font-family: 'Fira Code', monospace;
+    }
+    
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.6);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+    
+    .pulse-glow {
+      box-shadow: 0 0 15px rgba(14, 165, 233, 0.4);
+    }
+    
+    .glass-panel {
+      background: rgba(21, 28, 40, 0.75);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(38, 51, 77, 0.6);
+    }
+  </style>
+</head>
+
+<body class="bg-darkbg text-slate-100 min-h-screen flex flex-col overflow-hidden antialiased select-none">
+
+  <!-- Top Navigation Header -->
+  <header class="h-16 border-b border-darkborder bg-darkbg/90 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between z-20">
+    <div class="flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-brand-500/20">
+        <i data-lucide="cpu" class="w-6 h-6"></i>
+      </div>
+      <div>
+        <div class="flex items-center gap-2">
+          <h1 class="font-bold text-lg tracking-tight bg-gradient-to-r from-white via-slate-200 to-brand-500 bg-clip-text text-transparent">
+            WebLLM Studio
+          </h1>
+          <span class="text-[10px] font-semibold tracking-wide uppercase px-2 py-0.5 rounded-full bg-brand-500/10 text-brand-500 border border-brand-500/20">
+            Browser GPU
+          </span>
+        </div>
+        <p class="text-xs text-slate-400 hidden sm:block">100% On-Device AI Execution & Agent Environment</p>
+      </div>
+    </div>
+
+    <!-- Center Model Controls -->
+    <div class="flex items-center gap-2 max-w-md w-full mx-4">
+      <div class="relative flex-1">
+        <select id="model-select" class="w-full bg-darkcard border border-darkborder text-xs rounded-lg px-3 py-2 pr-8 text-slate-200 focus:outline-none focus:border-brand-500 transition-colors cursor-pointer appearance-none">
+          <optgroup label="Fast & Lightweight (< 1GB)">
+            <option value="Llama-3.2-1B-Instruct-q4f16_1-MLC" selected>Llama 3.2 1B Instruct (Fast, ~850MB)</option>
+            <option value="Qwen2.5-0.5B-Instruct-q4f16_1-MLC">Qwen 2.5 0.5B Instruct (Ultra Light, ~350MB)</option>
+            <option value="SmolLM2-360M-Instruct-q4f16_1-MLC">SmolLM2 360M Instruct (~250MB)</option>
+          </optgroup>
+          <optgroup label="Balanced & Powerful (1.5GB - 3.5GB)">
+            <option value="Llama-3.2-3B-Instruct-q4f16_1-MLC">Llama 3.2 3B Instruct (Recommended, ~1.9GB)</option>
+            <option value="Qwen2.5-1.5B-Instruct-q4f16_1-MLC">Qwen 2.5 1.5B Instruct (~1.1GB)</option>
+            <option value="Phi-3.5-mini-instruct-q4f16_1-MLC">Phi 3.5 Mini Instruct (~2.3GB)</option>
+            <option value="gemma-2-2b-it-q4f16_1-MLC">Gemma 2 2B Instruct (~1.8GB)</option>
+          </optgroup>
+        </select>
+        <i data-lucide="chevron-down" class="w-4 h-4 absolute right-2.5 top-2.5 text-slate-400 pointer-events-none"></i>
+      </div>
+
+      <button id="load-model-btn" class="px-3.5 py-2 bg-brand-600 hover:bg-brand-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all shadow-md shadow-brand-600/20 active:scale-95 shrink-0">
+        <i data-lucide="download" class="w-3.5 h-3.5"></i>
+        <span>Load Model</span>
+      </button>
+    </div>
+
+    <!-- Right Actions & WebGPU Status -->
+    <div class="flex items-center gap-3">
+      <div id="gpu-status-badge" class="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" title="WebGPU Status">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span id="gpu-status-text" class="hidden md:inline">WebGPU Ready</span>
+      </div>
+
+      <button id="toggle-sidebar-btn" class="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-darkcard transition-colors">
+        <i data-lucide="sliders" class="w-4 h-4"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- Progress Bar Overlay Banner -->
+  <div id="progress-container" class="hidden bg-darkcard/95 border-b border-brand-500/30 px-6 py-3 transition-all">
+    <div class="max-w-4xl mx-auto flex flex-col gap-2">
+      <div class="flex items-center justify-between text-xs">
+        <span id="progress-text" class="font-medium text-slate-300 flex items-center gap-2">
+          <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin text-brand-500"></i>
+          Downloading Model Weights into Browser Cache...
+        </span>
+        <span id="progress-percentage" class="font-bold text-brand-400">0%</span>
+      </div>
+      <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-700/50">
+        <div id="progress-bar-fill" class="h-full bg-gradient-to-r from-brand-600 to-indigo-500 rounded-full transition-all duration-200" style="width: 0%"></div>
+      </div>
+      <p class="text-[10px] text-slate-500 flex items-center justify-between">
+        <span>Downloaded weights are cached locally via IndexedDB for instant reloading.</span>
+        <span id="memory-usage-text">Target VRAM: ~1.2 GB</span>
+      </p>
+    </div>
+  </div>
+
+  <!-- Main Container Layout -->
+  <div class="flex-1 flex overflow-hidden relative">
+
+    <!-- Left Navigation Bar -->
+    <nav class="w-16 bg-darkbg border-r border-darkborder flex flex-col items-center py-4 gap-4 shrink-0">
+      <button data-tab="chat" class="tab-btn active p-3 rounded-xl text-slate-400 hover:text-white hover:bg-darkcard transition-all relative group" title="Chat Interface">
+        <i data-lucide="message-square" class="w-5 h-5"></i>
+        <span class="absolute left-16 bg-slate-800 text-xs px-2 py-1 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-30 pointer-events-none">Chat Mode</span>
+      </button>
+
+      <button data-tab="agent" class="tab-btn p-3 rounded-xl text-slate-400 hover:text-white hover:bg-darkcard transition-all relative group" title="Autonomous AI Agent">
+        <i data-lucide="bot" class="w-5 h-5"></i>
+        <span class="absolute left-16 bg-slate-800 text-xs px-2 py-1 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-30 pointer-events-none">Agentic Tools Mode</span>
+      </button>
+
+      <button data-tab="prompts" class="tab-btn p-3 rounded-xl text-slate-400 hover:text-white hover:bg-darkcard transition-all relative group" title="System Prompt Persona Library">
+        <i data-lucide="book-open" class="w-5 h-5"></i>
+        <span class="absolute left-16 bg-slate-800 text-xs px-2 py-1 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-30 pointer-events-none">Prompt Library</span>
+      </button>
+
+      <button data-tab="system" class="tab-btn p-3 rounded-xl text-slate-400 hover:text-white hover:bg-darkcard transition-all relative group" title="Hardware & Diagnostics">
+        <i data-lucide="activity" class="w-5 h-5"></i>
+        <span class="absolute left-16 bg-slate-800 text-xs px-2 py-1 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-30 pointer-events-none">GPU & Diagnostics</span>
+      </button>
+      
+      <div class="mt-auto flex flex-col gap-3">
+        <button id="clear-chat-btn" class="p-3 rounded-xl text-slate-500 hover:text-rose-400 hover:bg-darkcard transition-colors relative group" title="Clear History">
+          <i data-lucide="trash-2" class="w-5 h-5"></i>
+        </button>
+      </div>
+    </nav>
+
+    <!-- TAB 1: Chat Mode View -->
+    <main id="tab-chat" class="tab-content flex-1 flex flex-col bg-slate-950/40 relative">
+      <!-- Chat Messages Container -->
+      <div id="chat-messages" class="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+        <!-- Welcome Banner -->
+        <div id="welcome-card" class="max-w-2xl mx-auto my-8 glass-panel rounded-2xl p-6 border border-darkborder shadow-2xl text-center">
+          <div class="w-14 h-14 bg-brand-500/10 rounded-2xl flex items-center justify-center text-brand-400 mx-auto mb-4 border border-brand-500/20">
+            <i data-lucide="sparkles" class="w-7 h-7"></i>
+          </div>
+          <h2 class="text-xl font-bold text-white mb-2">Welcome to WebLLM Studio</h2>
+          <p class="text-sm text-slate-400 mb-6 max-w-md mx-auto leading-relaxed">
+            Run open-weights Large Language Models directly inside your browser using hardware-accelerated WebGPU with zero server costs or API keys.
+          </p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-left">
+            <button class="quick-prompt p-3 rounded-xl bg-darkcard/80 border border-darkborder hover:border-brand-500/50 hover:bg-darkcard transition-all text-xs text-slate-300 flex items-start gap-2.5">
+              <i data-lucide="code" class="w-4 h-4 text-brand-400 shrink-0 mt-0.5"></i>
+              <span>Write a python function to compute fibonacci numbers asynchronously</span>
+            </button>
+            <button class="quick-prompt p-3 rounded-xl bg-darkcard/80 border border-darkborder hover:border-brand-500/50 hover:bg-darkcard transition-all text-xs text-slate-300 flex items-start gap-2.5">
+              <i data-lucide="brain" class="w-4 h-4 text-purple-400 shrink-0 mt-0.5"></i>
+              <span>Explain quantum computing to a 10-year-old using analogies</span>
+            </button>
+            <button class="quick-prompt p-3 rounded-xl bg-darkcard/80 border border-darkborder hover:border-brand-500/50 hover:bg-darkcard transition-all text-xs text-slate-300 flex items-start gap-2.5">
+              <i data-lucide="feather" class="w-4 h-4 text-amber-400 shrink-0 mt-0.5"></i>
+              <span>Draft a polite email asking for project deadline extension</span>
+            </button>
+            <button class="quick-prompt p-3 rounded-xl bg-darkcard/80 border border-darkborder hover:border-brand-500/50 hover:bg-darkcard transition-all text-xs text-slate-300 flex items-start gap-2.5">
+              <i data-lucide="terminal" class="w-4 h-4 text-emerald-400 shrink-0 mt-0.5"></i>
+              <span>Create a bash script to backup a Postgres database to S3</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Input Bar Container -->
+      <div class="p-4 border-t border-darkborder bg-darkbg/90 backdrop-blur-md">
+        <div class="max-w-4xl mx-auto relative flex items-end gap-2 bg-darkcard rounded-2xl border border-darkborder p-2 focus-within:border-brand-500/70 transition-colors shadow-lg">
+          <textarea id="chat-input" rows="1" placeholder="Type your message or click 'Load Model' above..." class="w-full bg-transparent text-slate-100 placeholder-slate-500 text-sm px-3 py-2 focus:outline-none resize-none max-h-40" disabled></textarea>
+          
+          <div class="flex items-center gap-1.5 pb-1 pr-1">
+            <button id="stop-btn" class="hidden p-2 bg-rose-500/20 text-rose-400 hover:bg-rose-500/30 rounded-xl transition-all" title="Stop Generation">
+              <i data-lucide="square" class="w-4 h-4"></i>
+            </button>
+            <button id="send-btn" class="p-2.5 bg-brand-600 hover:bg-brand-500 disabled:bg-slate-800 disabled:text-slate-600 text-white rounded-xl transition-all shadow-md active:scale-95" disabled>
+              <i data-lucide="send" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>
+        <div class="max-w-4xl mx-auto flex items-center justify-between mt-2 px-2 text-[11px] text-slate-500">
+          <span>Shift+Enter for newline</span>
+          <span id="tok-speed-indicator" class="hidden font-mono text-brand-400">0.0 tokens/sec</span>
+        </div>
+      </div>
+    </main>
+
+    <!-- TAB 2: Agent Mode View -->
+    <main id="tab-agent" class="tab-content hidden flex-1 flex flex-col bg-slate-950/40 p-6 overflow-y-auto">
+      <div class="max-w-4xl mx-auto w-full space-y-6">
+        <!-- Agent Banner -->
+        <div class="glass-panel p-6 rounded-2xl border border-darkborder flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div>
+            <div class="flex items-center gap-2">
+              <h2 class="text-lg font-bold text-white">Autonomous Agent Execution Engine</h2>
+              <span class="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-400 text-xs font-semibold">ReAct Loop</span>
+            </div>
+            <p class="text-xs text-slate-400 mt-1">
+              Empower the local LLM to reason step-by-step, invoke browser tools, run code, and solve complex multi-step tasks.
+            </p>
+          </div>
+          
+          <div class="flex items-center gap-3">
+            <span class="text-xs text-slate-400 font-medium">Tools Enabled:</span>
+            <div class="flex gap-2">
+              <span class="px-2.5 py-1 rounded-lg bg-darkcard border border-darkborder text-xs text-emerald-400 flex items-center gap-1">
+                <i data-lucide="calculator" class="w-3.5 h-3.5"></i> Calc
+              </span>
+              <span class="px-2.5 py-1 rounded-lg bg-darkcard border border-darkborder text-xs text-brand-400 flex items-center gap-1">
+                <i data-lucide="code-2" class="w-3.5 h-3.5"></i> JS Eval
+              </span>
+              <span class="px-2.5 py-1 rounded-lg bg-darkcard border border-darkborder text-xs text-amber-400 flex items-center gap-1">
+                <i data-lucide="globe" class="w-3.5 h-3.5"></i> Mock Web
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Agent Input Task Form -->
+        <div class="bg-darkcard border border-darkborder rounded-2xl p-5 shadow-xl space-y-4">
+          <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+            Define Agent Task Objective:
+          </label>
+          <textarea id="agent-task-input" rows="3" placeholder="e.g. Calculate the compound interest on $5,000 at 7% annual interest for 5 years, then summarize the outcome." class="w-full bg-darkbg border border-darkborder text-slate-100 rounded-xl p-3 text-sm focus:outline-none focus:border-brand-500 resize-none"></textarea>
+          
+          <div class="flex items-center justify-between pt-2">
+            <div class="flex items-center gap-2 text-xs text-slate-400">
+              <i data-lucide="cpu" class="w-4 h-4 text-brand-400"></i>
+              <span>Max iterations: 5 reasoning cycles</span>
+            </div>
+            <button id="run-agent-btn" class="px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-brand-600 hover:from-indigo-500 hover:to-brand-500 text-white font-semibold text-xs rounded-xl flex items-center gap-2 shadow-lg shadow-indigo-600/20 active:scale-95 transition-all">
+              <i data-lucide="play" class="w-4 h-4"></i>
+              <span>Start Autonomous Agent</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Agent Live Execution Tree -->
+        <div id="agent-execution-tree" class="space-y-4">
+          <div class="text-xs font-semibold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+            <span>Execution Chain Log</span>
+            <span id="agent-status-tag" class="text-slate-500">Idle</span>
+          </div>
+          
+          <div id="agent-steps-container" class="space-y-3">
+            <div class="text-center py-10 text-slate-500 text-xs border border-dashed border-darkborder rounded-2xl">
+              No active agent task running. Enter an objective above and click Start.
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- TAB 3: System Prompt Library -->
+    <main id="tab-prompts" class="tab-content hidden flex-1 bg-slate-950/40 p-6 overflow-y-auto">
+      <div class="max-w-4xl mx-auto space-y-6">
+        <div>
+          <h2 class="text-xl font-bold text-white">System Persona Library</h2>
+          <p class="text-xs text-slate-400 mt-1">Select or customize the foundational system instruction prompt to shape the AI model's behavior.</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <!-- Persona Card 1 -->
+          <div class="persona-card glass-panel p-5 rounded-2xl border border-darkborder hover:border-brand-500/50 cursor-pointer transition-all" data-prompt="You are an expert Principal Software Engineer and System Architect. Provide concise, production-ready code blocks with optimal performance, clean architecture, error handling, and inline comments.">
+            <div class="flex items-center justify-between mb-2">
+              <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-400 flex items-center justify-center">
+                  <i data-lucide="code" class="w-4 h-4"></i>
+                </div>
+                <h3 class="font-bold text-sm text-white">Senior Software Architect</h3>
+              </div>
+              <span class="text-[10px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded font-medium">Coding</span>
+            </div>
+            <p class="text-xs text-slate-400 leading-relaxed">Focuses on clean code, design patterns, algorithmic efficiency, and precise syntax without unnecessary fluff.</p>
+          </div>
+
+          <!-- Persona Card 2 -->
+          <div class="persona-card glass-panel p-5 rounded-2xl border border-darkborder hover:border-brand-500/50 cursor-pointer transition-all" data-prompt="You are an Autonomous AI Reasoning Agent. For every query, break down your thinking into numbered logical steps before providing the final answer. Be rigorous and objective.">
+            <div class="flex items-center justify-between mb-2">
+              <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 rounded-lg bg-purple-500/10 text-purple-400 flex items-center justify-center">
+                  <i data-lucide="brain-circuit" class="w-4 h-4"></i>
+                </div>
+                <h3 class="font-bold text-sm text-white">Chain-of-Thought Analyst</h3>
+              </div>
+              <span class="text-[10px] bg-purple-500/10 text-purple-400 px-2 py-0.5 rounded font-medium">Logic</span>
+            </div>
+            <p class="text-xs text-slate-400 leading-relaxed">Step-by-step reasoning decomposition, hypothesis validation, and structured analytical answers.</p>
+          </div>
+
+          <!-- Persona Card 3 -->
+          <div class="persona-card glass-panel p-5 rounded-2xl border border-darkborder hover:border-brand-500/50 cursor-pointer transition-all" data-prompt="You are a ultra-concise Executive Assistant. Keep all answers under 3 sentences unless explicitly asked to elaborate. Prioritize bullet points and immediate actionability.">
+            <div class="flex items-center justify-between mb-2">
+              <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+                  <i data-lucide="zap" class="w-4 h-4"></i>
+                </div>
+                <h3 class="font-bold text-sm text-white">Ultra-Concise Brief</h3>
+              </div>
+              <span class="text-[10px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded font-medium">Speed</span>
+            </div>
+            <p class="text-xs text-slate-400 leading-relaxed">Direct, highly summarized output optimized for fast reading and decision making.</p>
+          </div>
+
+          <!-- Persona Card 4 -->
+          <div class="persona-card glass-panel p-5 rounded-2xl border border-darkborder hover:border-brand-500/50 cursor-pointer transition-all" data-prompt="You are a World-Class Creative Writer and Copywriter. Produce engaging, evocative, and compelling narrative text with rich metaphors and engaging flow.">
+            <div class="flex items-center justify-between mb-2">
+              <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center">
+                  <i data-lucide="pen-tool" class="w-4 h-4"></i>
+                </div>
+                <h3 class="font-bold text-sm text-white">Creative Wordsmith</h3>
+              </div>
+              <span class="text-[10px] bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded font-medium">Creative</span>
+            </div>
+            <p class="text-xs text-slate-400 leading-relaxed">Refreshes storytelling, marketing copy, stylistic prose, and creative writing tasks.</p>
+          </div>
+        </div>
+
+        <!-- Custom System Prompt Textarea -->
+        <div class="bg-darkcard border border-darkborder rounded-2xl p-5 space-y-3">
+          <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400">
+            Active System Instruction Prompt:
+          </label>
+          <textarea id="active-system-prompt" rows="4" class="w-full bg-darkbg border border-darkborder text-slate-200 text-xs font-mono rounded-xl p-3 focus:outline-none focus:border-brand-500 resize-none">You are a helpful, respectful, and honest AI assistant running entirely inside the user's browser via WebGPU.</textarea>
+          <div class="flex justify-end">
+            <button id="save-system-prompt-btn" class="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all">
+              <i data-lucide="check" class="w-3.5 h-3.5"></i>
+              <span>Apply Active Persona</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- TAB 4: Hardware & Diagnostics View -->
+    <main id="tab-system" class="tab-content hidden flex-1 bg-slate-950/40 p-6 overflow-y-auto">
+      <div class="max-w-4xl mx-auto space-y-6">
+        <div>
+          <h2 class="text-xl font-bold text-white">WebGPU Diagnostics & Hardware Specs</h2>
+          <p class="text-xs text-slate-400 mt-1">Inspecting client-side WebGPU adapter parameters and memory cache status.</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div class="glass-panel p-5 rounded-2xl border border-darkborder">
+            <div class="text-xs font-semibold text-slate-400 mb-1">WebGPU API Status</div>
+            <div id="diag-webgpu-status" class="text-lg font-bold text-emerald-400 flex items-center gap-2">
+              <i data-lucide="check-circle" class="w-5 h-5"></i> Supported
+            </div>
+          </div>
+
+          <div class="glass-panel p-5 rounded-2xl border border-darkborder">
+            <div class="text-xs font-semibold text-slate-400 mb-1">GPU Vendor / Device</div>
+            <div id="diag-gpu-adapter" class="text-sm font-semibold text-slate-200 truncate">
+              Detecting...
+            </div>
+          </div>
+
+          <div class="glass-panel p-5 rounded-2xl border border-darkborder">
+            <div class="text-xs font-semibold text-slate-400 mb-1">Browser Cache Storage</div>
+            <div id="diag-cache-size" class="text-sm font-semibold text-slate-200">
+              IndexedDB ML Cache Ready
+            </div>
+          </div>
+        </div>
+
+        <!-- Terminal Diagnostic Log -->
+        <div class="bg-darkbg border border-darkborder rounded-2xl p-4 font-mono text-xs space-y-2">
+          <div class="flex items-center justify-between pb-2 border-b border-darkborder text-slate-400">
+            <span class="flex items-center gap-2"><i data-lucide="terminal" class="w-4 h-4 text-brand-400"></i> Execution Diagnostic Terminal</span>
+            <button id="clear-diag-log" class="hover:text-white"><i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i></button>
+          </div>
+          <div id="diag-log-console" class="h-64 overflow-y-auto space-y-1 text-slate-300 pr-2">
+            <div class="text-slate-500">[System] Initializing WebLLM Studio diagnostic listener...</div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Right Sidebar Controls (Collapsible) -->
+    <aside id="right-sidebar" class="w-72 bg-darkbg border-l border-darkborder p-5 flex flex-col gap-6 shrink-0 transition-all duration-300">
+      <div>
+        <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4 flex items-center gap-2">
+          <i data-lucide="sliders" class="w-4 h-4 text-brand-400"></i> Model Parameters
+        </h3>
+
+        <!-- Temperature Slider -->
+        <div class="space-y-2 mb-5">
+          <div class="flex justify-between text-xs">
+            <span class="text-slate-300">Temperature</span>
+            <span id="temp-val" class="font-mono text-brand-400 font-semibold">0.7</span>
+          </div>
+          <input id="temp-slider" type="range" min="0" max="1.5" step="0.05" value="0.7" class="w-full accent-brand-500 bg-slate-800 h-1.5 rounded-lg cursor-pointer">
+          <div class="flex justify-between text-[10px] text-slate-500">
+            <span>Deterministic (0.0)</span>
+            <span>Creative (1.5)</span>
+          </div>
+        </div>
+
+        <!-- Top P Slider -->
+        <div class="space-y-2 mb-5">
+          <div class="flex justify-between text-xs">
+            <span class="text-slate-300">Top-P Sampling</span>
+            <span id="top-p-val" class="font-mono text-brand-400 font-semibold">0.9</span>
+          </div>
+          <input id="top-p-slider" type="range" min="0.1" max="1.0" step="0.05" value="0.9" class="w-full accent-brand-500 bg-slate-800 h-1.5 rounded-lg cursor-pointer">
+        </div>
+
+        <!-- Max Tokens Slider -->
+        <div class="space-y-2">
+          <div class="flex justify-between text-xs">
+            <span class="text-slate-300">Max Output Tokens</span>
+            <span id="max-tokens-val" class="font-mono text-brand-400 font-semibold">1024</span>
+          </div>
+          <input id="max-tokens-slider" type="range" min="128" max="4096" step="128" value="1024" class="w-full accent-brand-500 bg-slate-800 h-1.5 rounded-lg cursor-pointer">
+        </div>
+      </div>
+
+      <hr class="border-darkborder">
+
+      <!-- Model Spec Box -->
+      <div class="glass-panel p-4 rounded-xl border border-darkborder space-y-2 text-xs">
+        <div class="font-semibold text-white flex items-center gap-1.5">
+          <i data-lucide="shield-check" class="w-4 h-4 text-emerald-400"></i> Privacy Guarantee
+        </div>
+        <p class="text-[11px] text-slate-400 leading-relaxed">
+          Zero data leaves your machine. Inference runs completely in client-side GPU memory via WebGPU shaders.
+        </p>
+      </div>
+    </aside>
+
+  </div>
+
+  <!-- JavaScript Engine & Module Logic -->
+  <script type="module">
+    import * as webllm from "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.78/+esm";
+
+    // Global Application State
+    let engine = null;
+    let isGenerating = false;
+    let selectedModel = "Llama-3.2-1B-Instruct-q4f16_1-MLC";
+    let chatHistory = [];
+    let activeSystemPrompt = "You are a helpful, respectful, and honest AI assistant running entirely inside the user's browser via WebGPU.";
+
+    // UI Elements Selection
+    const modelSelect = document.getElementById("model-select");
+    const loadModelBtn = document.getElementById("load-model-btn");
+    const progressContainer = document.getElementById("progress-container");
+    const progressBarFill = document.getElementById("progress-bar-fill");
+    const progressText = document.getElementById("progress-text");
+    const progressPercentage = document.getElementById("progress-percentage");
+    const chatMessages = document.getElementById("chat-messages");
+    const chatInput = document.getElementById("chat-input");
+    const sendBtn = document.getElementById("send-btn");
+    const stopBtn = document.getElementById("stop-btn");
+    const welcomeCard = document.getElementById("welcome-card");
+    const tokSpeedIndicator = document.getElementById("tok-speed-indicator");
+
+    // Audio SFX Synthesizer
+    const playAudioClick = () => {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(600, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(300, ctx.currentTime + 0.04);
+        gain.gain.setValueAtTime(0.05, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.01, ctx.currentTime + 0.04);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.04);
+      } catch (e) {}
+    };
+
+    function logDiag(msg, type = 'info') {
+      const consoleNode = document.getElementById("diag-log-console");
+      if (!consoleNode) return;
+      const time = new Date().toLocaleTimeString();
+      const div = document.createElement("div");
+      const colorClass = type === 'error' ? 'text-rose-400' : type === 'success' ? 'text-emerald-400' : 'text-slate-300';
+      div.className = `flex items-start gap-2 ${colorClass}`;
+      div.innerHTML = `<span class="text-slate-600">[${time}]</span> <span>${msg}</span>`;
+      consoleNode.appendChild(div);
+      consoleNode.scrollTop = consoleNode.scrollHeight;
+    }
+
+    async function checkWebGPUSupport() {
+      const gpuBadge = document.getElementById("gpu-status-badge");
+      const gpuText = document.getElementById("gpu-status-text");
+      const diagStatus = document.getElementById("diag-webgpu-status");
+      const diagAdapter = document.getElementById("diag-gpu-adapter");
+
+      if (!navigator.gpu) {
+        logDiag("WebGPU is NOT supported or enabled in this browser/frame.", "error");
+        if (gpuBadge) {
+          gpuBadge.className = "flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-rose-500/10 text-rose-400 border border-rose-500/20";
+          gpuText.textContent = "WebGPU Unavailable";
+        }
+        if (diagStatus) diagStatus.innerHTML = `<span class="text-rose-400">Unsupported</span>`;
+        return false;
+      }
+
+      try {
+        const adapter = await navigator.gpu.requestAdapter();
+        if (adapter) {
+          const info = adapter.requestAdapterInfo ? await adapter.requestAdapterInfo() : { vendor: "WebGPU Device" };
+          logDiag(`WebGPU Adapter found: ${info.vendor || 'Hardware WebGPU Device'}`, "success");
+          if (diagAdapter) diagAdapter.textContent = info.vendor || "Hardware WebGPU Adapter";
+          return true;
+        } else {
+          logDiag("WebGPU adapter request returned null.", "error");
+          return false;
+        }
+      } catch (err) {
+        logDiag(`WebGPU check note: ${err.message}`, "error");
+        return false;
+      }
+    }
+
+    async function loadModel() {
+      selectedModel = modelSelect.value;
+      playAudioClick();
+
+      loadModelBtn.disabled = true;
+      modelSelect.disabled = true;
+      progressContainer.classList.remove("hidden");
+      logDiag(`Starting download/init for model: ${selectedModel}`);
+
+      const initProgressCallback = (report) => {
+        const pct = Math.round((report.progress || 0) * 100);
+        progressBarFill.style.width = `${pct}%`;
+        progressPercentage.textContent = `${pct}%`;
+        progressText.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin text-brand-500"></i> ${report.text || 'Loading weights...'}`;
+        lucide.createIcons();
+      };
+
+      try {
+        engine = await webllm.CreateMLCEngine(selectedModel, {
+          initProgressCallback: initProgressCallback,
+        });
+
+        logDiag(`Model ${selectedModel} successfully loaded into VRAM!`, "success");
+        progressContainer.classList.add("hidden");
+        
+        loadModelBtn.innerHTML = `<i data-lucide="check" class="w-3.5 h-3.5"></i> Loaded`;
+        loadModelBtn.className = "px-3.5 py-2 bg-emerald-600 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-emerald-600/20";
+        lucide.createIcons();
+
+        chatInput.disabled = false;
+        sendBtn.disabled = false;
+        chatInput.placeholder = "Ask anything! Model is ready on your GPU...";
+        chatInput.focus();
+
+      } catch (error) {
+        logDiag(`Failed to load WebLLM model: ${error.message}`, "error");
+        progressText.textContent = `Initialization Error: ${error.message}`;
+        progressBarFill.className = "h-full bg-rose-500 rounded-full";
+        loadModelBtn.disabled = false;
+        modelSelect.disabled = false;
+      }
+    }
+
+    function appendMessage(role, content = "") {
+      if (welcomeCard) welcomeCard.classList.add("hidden");
+
+      const messageDiv = document.createElement("div");
+      messageDiv.className = `flex gap-3 max-w-3xl ${role === 'user' ? 'ml-auto flex-row-reverse' : ''}`;
+
+      const avatar = document.createElement("div");
+      avatar.className = `w-8 h-8 rounded-xl flex items-center justify-center shrink-0 font-bold text-xs ${
+        role === 'user' 
+          ? 'bg-brand-600 text-white shadow-md shadow-brand-600/20' 
+          : 'bg-darkcard border border-darkborder text-brand-400'
+      }`;
+      avatar.innerHTML = role === 'user' ? '<i data-lucide="user" class="w-4 h-4"></i>' : '<i data-lucide="bot" class="w-4 h-4"></i>';
+
+      const contentBubble = document.createElement("div");
+      contentBubble.className = `rounded-2xl p-4 text-xs sm:text-sm leading-relaxed ${
+        role === 'user'
+          ? 'bg-brand-600 text-white rounded-tr-none'
+          : 'bg-darkcard border border-darkborder text-slate-100 rounded-tl-none space-y-3'
+      }`;
+      
+      contentBubble.innerHTML = role === 'user' ? escapeHtml(content) : marked.parse(content || "...");
+
+      messageDiv.appendChild(avatar);
+      messageDiv.appendChild(contentBubble);
+      chatMessages.appendChild(messageDiv);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+
+      lucide.createIcons();
+      return contentBubble;
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    async function handleChatSubmit() {
+      const promptText = chatInput.value.trim();
+      if (!promptText || isGenerating) return;
+
+      playAudioClick();
+      chatInput.value = "";
+      chatInput.style.height = "auto";
+
+      if (!engine) {
+        await loadModel();
+        if (!engine) return;
+      }
+
+      appendMessage("user", promptText);
+      chatHistory.push({ role: "user", content: promptText });
+
+      const assistantBubble = appendMessage("assistant", "");
+      
+      isGenerating = true;
+      sendBtn.classList.add("hidden");
+      stopBtn.classList.remove("hidden");
+      tokSpeedIndicator.classList.remove("hidden");
+
+      const temp = parseFloat(document.getElementById("temp-slider").value);
+      const topP = parseFloat(document.getElementById("top-p-slider").value);
+      const maxTokens = parseInt(document.getElementById("max-tokens-slider").value);
+
+      const messages = [
+        { role: "system", content: activeSystemPrompt },
+        ...chatHistory
+      ];
+
+      try {
+        const completion = await engine.chat.completions.create({
+          messages: messages,
+          temperature: temp,
+          top_p: topP,
+          max_tokens: maxTokens,
+          stream: true,
+        });
+
+        let fullOutput = "";
+        let startTime = performance.now();
+        let tokenCount = 0;
+
+        for await (const chunk of completion) {
+          if (!isGenerating) break;
+
+          const delta = chunk.choices[0]?.delta?.content || "";
+          fullOutput += delta;
+          tokenCount++;
+
+          assistantBubble.innerHTML = marked.parse(fullOutput);
+          
+          assistantBubble.querySelectorAll('pre code').forEach((block) => {
+            hljs.highlightElement(block);
+          });
+
+          const elapsedSec = (performance.now() - startTime) / 1000;
+          if (elapsedSec > 0) {
+            const speed = (tokenCount / elapsedSec).toFixed(1);
+            tokSpeedIndicator.textContent = `${speed} tok/sec`;
+          }
+
+          chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        chatHistory.push({ role: "assistant", content: fullOutput });
+
+      } catch (err) {
+        logDiag(`Chat generation error: ${err.message}`, "error");
+        assistantBubble.innerHTML = `<span class="text-rose-400">Generation error: ${err.message}</span>`;
+      } finally {
+        isGenerating = false;
+        sendBtn.classList.remove("hidden");
+        stopBtn.classList.add("hidden");
+        chatInput.focus();
+      }
+    }
+
+    async function runAutonomousAgent() {
+      const taskInput = document.getElementById("agent-task-input");
+      const stepsContainer = document.getElementById("agent-steps-container");
+      const statusTag = document.getElementById("agent-status-tag");
+      const task = taskInput.value.trim();
+
+      if (!task) return;
+      if (!engine) {
+        alert("Please click 'Load Model' in the header first to activate WebGPU LLM!");
+        return;
+      }
+
+      stepsContainer.innerHTML = "";
+      statusTag.textContent = "Agent Active (Looping)";
+      statusTag.className = "text-brand-400 font-bold animate-pulse";
+
+      const agentSystemPrompt = `You are a reasoning Autonomous Agent with access to tools.
+Tools available:
+1. calculator(expression): Evaluates math expressions. Example: calculator("5000 * Math.pow(1 + 0.07, 5)")
+2. js_eval(code): Executes Javascript code string.
+3. mock_web_search(query): Returns simulated web search context.
+
+Format your responses using exact Thought / Action / Final Answer syntax:
+Thought: <reason about what to do>
+Action: <tool_name>(<arguments>)
+Observation: <result will be fed back>
+... (repeat if needed)
+Final Answer: <your final answer to the user>`;
+
+      const agentMessages = [
+        { role: "system", content: agentSystemPrompt },
+        { role: "user", content: `Task: ${task}` }
+      ];
+
+      let maxCycles = 4;
+
+      for (let cycle = 1; cycle <= maxCycles; cycle++) {
+        const stepCard = document.createElement("div");
+        stepCard.className = "bg-darkcard border border-darkborder rounded-xl p-4 space-y-3 text-xs";
+        stepCard.innerHTML = `
+          <div class="flex items-center justify-between border-b border-darkborder pb-2">
+            <span class="font-bold text-slate-300 flex items-center gap-1.5">
+              <i data-lucide="circle-dot" class="w-3.5 h-3.5 text-brand-400"></i> Agent Cycle #${cycle}
+            </span>
+            <span class="text-[10px] text-slate-500">Reasoning Step</span>
+          </div>
+          <div class="agent-step-content text-slate-300 font-mono whitespace-pre-wrap">Thinking...</div>
+        `;
+        stepsContainer.appendChild(stepCard);
+        lucide.createIcons();
+
+        const stepContentNode = stepCard.querySelector(".agent-step-content");
+
+        try {
+          const response = await engine.chat.completions.create({
+            messages: agentMessages,
+            temperature: 0.2,
+            max_tokens: 512,
+          });
+
+          const replyText = response.choices[0].message.content || "";
+          stepContentNode.textContent = replyText;
+          agentMessages.push({ role: "assistant", content: replyText });
+
+          if (replyText.includes("Final Answer:")) {
+            statusTag.textContent = "Task Finished";
+            statusTag.className = "text-emerald-400 font-bold";
+            break;
+          }
+
+          const actionMatch = replyText.match(/Action:\s*([a-zA-Z0-9_]+)\((.*)\)/);
+          if (actionMatch) {
+            const toolName = actionMatch[1];
+            const rawArgs = actionMatch[2].replace(/^["']|["']$/g, '');
+            let observation = "";
+
+            if (toolName === "calculator" || toolName === "js_eval") {
+              try {
+                const evalResult = Function(`"use strict"; return (${rawArgs})`)();
+                observation = String(evalResult);
+              } catch (e) {
+                observation = `Eval Error: ${e.message}`;
+              }
+            } else if (toolName === "mock_web_search") {
+              observation = `[Search Results for "${rawArgs}"]: Interest rates updated for 2026. Global inflation benchmark is 2.4%.`;
+            } else {
+              observation = `Unknown tool: ${toolName}`;
+            }
+
+            const obsCard = document.createElement("div");
+            obsCard.className = "bg-slate-900 border border-brand-500/30 rounded-xl p-3 text-xs text-brand-300 font-mono";
+            obsCard.innerHTML = `<strong>Observation (${toolName}):</strong> ${observation}`;
+            stepsContainer.appendChild(obsCard);
+
+            agentMessages.push({ role: "user", content: `Observation: ${observation}` });
+          } else {
+            agentMessages.push({ role: "user", content: "Please summarize your thought process and provide the Final Answer:" });
+          }
+
+        } catch (err) {
+          stepContentNode.textContent = `Agent error: ${err.message}`;
+          break;
+        }
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", async () => {
+      lucide.createIcons();
+      await checkWebGPUSupport();
+
+      // Tab Switching
+      document.querySelectorAll(".tab-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const tabId = btn.getAttribute("data-tab");
+          playAudioClick();
+
+          document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active", "text-brand-400", "bg-darkcard"));
+          btn.classList.add("active", "text-brand-400", "bg-darkcard");
+
+          document.querySelectorAll(".tab-content").forEach(tc => tc.classList.add("hidden"));
+          document.getElementById(`tab-${tabId}`).classList.remove("hidden");
+        });
+      });
+
+      // Quick Prompt Buttons
+      document.querySelectorAll(".quick-prompt").forEach(btn => {
+        btn.addEventListener("click", () => {
+          chatInput.value = btn.querySelector("span").textContent;
+          chatInput.focus();
+        });
+      });
+
+      // Persona Selection
+      document.querySelectorAll(".persona-card").forEach(card => {
+        card.addEventListener("click", () => {
+          activeSystemPrompt = card.getAttribute("data-prompt");
+          document.getElementById("active-system-prompt").value = activeSystemPrompt;
+          playAudioClick();
+        });
+      });
+
+      // Parameter Sliders Display Update
+      document.getElementById("temp-slider").addEventListener("input", (e) => {
+        document.getElementById("temp-val").textContent = e.target.value;
+      });
+      document.getElementById("top-p-slider").addEventListener("input", (e) => {
+        document.getElementById("top-p-val").textContent = e.target.value;
+      });
+      document.getElementById("max-tokens-slider").addEventListener("input", (e) => {
+        document.getElementById("max-tokens-val").textContent = e.target.value;
+      });
+
+      // Event Listeners
+      loadModelBtn.addEventListener("click", loadModel);
+      sendBtn.addEventListener("click", handleChatSubmit);
+      stopBtn.addEventListener("click", () => { isGenerating = false; });
+      document.getElementById("run-agent-btn").addEventListener("click", runAutonomousAgent);
+
+      chatInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          handleChatSubmit();
+        }
+      });
+
+      chatInput.addEventListener("input", () => {
+        chatInput.style.height = "auto";
+        chatInput.style.height = chatInput.scrollHeight + "px";
+      });
+
+      document.getElementById("toggle-sidebar-btn").addEventListener("click", () => {
+        const sidebar = document.getElementById("right-sidebar");
+        sidebar.classList.toggle("hidden");
+      });
+
+      document.getElementById("clear-chat-btn").addEventListener("click", () => {
+        chatHistory = [];
+        chatMessages.innerHTML = "";
+        chatMessages.appendChild(welcomeCard);
+        welcomeCard.classList.remove("hidden");
+      });
+
+      document.getElementById("clear-diag-log").addEventListener("click", () => {
+        document.getElementById("diag-log-console").innerHTML = "";
+      });
+    });
+  </script>
+</body>
+</html>

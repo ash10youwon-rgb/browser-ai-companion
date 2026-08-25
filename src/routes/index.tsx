@@ -425,6 +425,7 @@ function AppIndex() {
             models={models}
             selectedModel={selectedModel}
             onSelectModel={handleSelectModel}
+            onLoadModel={handleLoadModel}
             onClearChat={handleClearChat}
             onNewChat={handleNewChat}
             activeChatTitle={activeChat?.title}

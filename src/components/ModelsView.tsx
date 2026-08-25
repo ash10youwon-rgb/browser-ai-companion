@@ -1,6 +1,18 @@
 import React, { useState } from "react";
-import { Cpu, Check, Play, Zap, HardDrive, CheckCircle2, RefreshCw, Layers } from "lucide-react";
+import {
+  Cpu,
+  Check,
+  Play,
+  Zap,
+  HardDrive,
+  CheckCircle2,
+  RefreshCw,
+  Layers,
+  Download,
+  Loader2,
+} from "lucide-react";
 import { ModelInfo, WebGpuStats } from "@/types";
+import { isModelLoadedInVRAM, preloadModelInVRAM } from "@/services/browserLLMEngine";
 
 interface ModelsViewProps {
   models: ModelInfo[];
@@ -18,6 +30,7 @@ export const ModelsView: React.FC<ModelsViewProps> = ({
   gpuStats,
 }) => {
   const [loadingModelId, setLoadingModelId] = useState<string | null>(null);
+  const [loadingStatusText, setLoadingStatusText] = useState<string>("");
   const [selectedCategory, setSelectedCategory] = useState<string>("All");
 
   const categories = [
@@ -31,15 +44,24 @@ export const ModelsView: React.FC<ModelsViewProps> = ({
   const filteredModels =
     selectedCategory === "All" ? models : models.filter((m) => m.category === selectedCategory);
 
-  const handleSwitchModel = (model: ModelInfo) => {
-    if (model.id === selectedModel.id) return;
+  const handleSwitchModel = async (model: ModelInfo) => {
     setLoadingModelId(model.id);
+    setLoadingStatusText(`Connecting shaders for ${model.name}...`);
 
-    setTimeout(() => {
+    try {
+      await preloadModelInVRAM(model.id, (pct, status) => {
+        setLoadingStatusText(status || `Loading (${pct}%)...`);
+      });
+      onLoadModel(model.id);
+      onSelectModel({ ...model, loaded: true });
+    } catch (err) {
+      console.warn("Model preload fallback:", err);
       onLoadModel(model.id);
       onSelectModel(model);
+    } finally {
       setLoadingModelId(null);
-    }, 1200);
+      setLoadingStatusText("");
+    }
   };
 
   return (
@@ -99,6 +121,7 @@ export const ModelsView: React.FC<ModelsViewProps> = ({
         {filteredModels.map((model) => {
           const isSelected = selectedModel.id === model.id;
           const isLoading = loadingModelId === model.id;
+          const isModelLoaded = model.loaded || isModelLoadedInVRAM(model.id);
 
           return (
             <div
@@ -115,11 +138,18 @@ export const ModelsView: React.FC<ModelsViewProps> = ({
                   <span className="text-[10px] font-semibold text-[#38bdf8] bg-blue-950/60 px-2 py-0.5 rounded border border-blue-800/40">
                     {model.category}
                   </span>
-                  {isSelected && (
-                    <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-500/30">
-                      <CheckCircle2 className="h-3 w-3" /> Active
-                    </span>
-                  )}
+                  <div className="flex items-center gap-1.5">
+                    {isModelLoaded && !isSelected && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-300 bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                        Cached in VRAM
+                      </span>
+                    )}
+                    {isSelected && (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                        <CheckCircle2 className="h-3 w-3" /> Active
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Title */}
@@ -186,7 +216,9 @@ export const ModelsView: React.FC<ModelsViewProps> = ({
                     {isLoading ? (
                       <>
                         <RefreshCw className="h-3.5 w-3.5 animate-spin text-white" />
-                        Transferring weights to WebGPU...
+                        <span className="truncate">
+                          {loadingStatusText || "Transferring weights to WebGPU..."}
+                        </span>
                       </>
                     ) : (
                       <>
