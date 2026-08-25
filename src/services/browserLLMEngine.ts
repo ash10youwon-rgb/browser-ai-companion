@@ -433,20 +433,33 @@ export async function streamBrowserLLMResponse(
   // Format messages array
   const formattedMessages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [];
 
-  if (systemPrompt && systemPrompt.trim()) {
-    formattedMessages.push({ role: "system", content: systemPrompt.trim() });
-  } else {
-    formattedMessages.push({
-      role: "system",
-      content:
-        "You are a helpful, respectful, and honest AI assistant running entirely inside the user's browser via WebGPU.",
-    });
-  }
+  const baseSystemPrompt =
+    systemPrompt && systemPrompt.trim()
+      ? systemPrompt.trim()
+      : "You are a helpful, respectful, and honest AI assistant running entirely inside the user's browser via WebGPU.";
+
+  const effectiveSystemPrompt = `${baseSystemPrompt}\n\nInstruction: Answer the user's latest query directly, accurately, and concisely. Do not repeat previous answers or conversational templates.`;
+
+  formattedMessages.push({
+    role: "system",
+    content: effectiveSystemPrompt,
+  });
 
   if (messages && messages.length > 0) {
-    for (const msg of messages) {
+    // Filter out initial onboarding placeholder messages
+    const cleanMessages = messages.filter(
+      (m) =>
+        m.content &&
+        !m.content.includes("👋 Hey BroAI") &&
+        !m.content.includes("Hello! I'm running locally in your browser using your GPU"),
+    );
+
+    // Keep the most recent conversation context (last 6 turns) so small browser models maintain attention
+    const recentMessages = cleanMessages.length > 0 ? cleanMessages.slice(-6) : messages.slice(-2);
+
+    for (const msg of recentMessages) {
       formattedMessages.push({
-        role: msg.role,
+        role: msg.role as "user" | "assistant" | "system",
         content: msg.content,
       });
     }
@@ -468,8 +481,11 @@ export async function streamBrowserLLMResponse(
 
       const completion = await engine.chat.completions.create({
         messages: formattedMessages,
-        temperature: Math.max(0.01, temperature),
+        temperature: Math.max(0.4, temperature),
         top_p: Math.min(1.0, Math.max(0.1, topP)),
+        presence_penalty: 0.3,
+        frequency_penalty: 0.3,
+        repetition_penalty: 1.12,
         max_tokens: maxTokens,
         stream: true,
       });
@@ -550,9 +566,11 @@ export async function streamBrowserLLMResponse(
 
   const output = await generator(formattedMessages, {
     max_new_tokens: maxTokens,
-    temperature: Math.max(0.1, temperature),
-    do_sample: temperature > 0.1,
+    temperature: Math.max(0.4, temperature),
+    repetition_penalty: 1.12,
+    do_sample: true,
     top_k: 40,
+    top_p: Math.min(1.0, Math.max(0.1, topP)),
     streamer,
   });
 
