@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { GoogleGenAI } from "@google/genai";
 import { ChatMessage, ModelInfo } from "@/types";
+import { checkRateLimit, sanitizeAndValidatePrompt } from "./apiGuard";
 
 export interface ChatCompletionRequest {
   messages: Array<{ role: "user" | "assistant"; content: string; imageAttached?: string }>;
@@ -27,14 +28,30 @@ export const generateAiChatCompletion = createServerFn({ method: "POST" })
   .validator((d: ChatCompletionRequest) => d)
   .handler(async ({ data }): Promise<ChatCompletionResponse> => {
     const {
-      messages,
-      prompt,
+      messages = [],
+      prompt: rawPrompt,
       selectedModel,
       systemPrompt,
       temperature = 0.7,
       webSearch = false,
       imageAttached,
     } = data;
+
+    // 1. Input sanitization & size limits
+    const promptValidation = sanitizeAndValidatePrompt(rawPrompt, 8000);
+    const prompt = promptValidation.valid
+      ? promptValidation.cleaned
+      : String(rawPrompt || "").slice(0, 8000);
+
+    // 2. Budget and rate limit protection
+    const rateLimit = checkRateLimit();
+    if (!rateLimit.allowed) {
+      return {
+        text: `⏳ **Usage Limit Alert:** ${rateLimit.reason || "Rate limit reached."} Please wait a few seconds before sending another message.`,
+        modelUsed: selectedModel?.id || "broai-guard",
+      };
+    }
+
     const apiKey = process.env.GEMINI_API_KEY;
 
     if (apiKey) {

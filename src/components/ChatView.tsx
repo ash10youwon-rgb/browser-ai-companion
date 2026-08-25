@@ -34,6 +34,7 @@ import { CodeSandboxCard } from "./CodeSandboxCard";
 import { SearchGroundingBanner } from "./SearchGroundingBanner";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { isModelLoadedInVRAM, preloadModelInVRAM } from "@/services/browserLLMEngine";
+import { sanitizeUrl } from "@/lib/urlSanitizer";
 
 interface ChatViewProps {
   messages: ChatMessage[];
@@ -527,18 +528,21 @@ export const ChatView: React.FC<ChatViewProps> = ({
                         <span>Google Search Grounding Sources</span>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        {msg.sources.map((source, sIdx) => (
-                          <a
-                            key={sIdx}
-                            href={source.uri}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#0a1220] hover:bg-[#14233a] border border-[#1d3354] hover:border-[#38bdf8]/60 text-[11px] text-slate-300 hover:text-white transition shadow-sm max-w-xs truncate"
-                          >
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#38bdf8]" />
-                            <span className="truncate">{source.title}</span>
-                          </a>
-                        ))}
+                        {msg.sources.map((source, sIdx) => {
+                          const safeUri = sanitizeUrl(source.uri);
+                          return (
+                            <a
+                              key={sIdx}
+                              href={safeUri}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#0a1220] hover:bg-[#14233a] border border-[#1d3354] hover:border-[#38bdf8]/60 text-[11px] text-slate-300 hover:text-white transition shadow-sm max-w-xs truncate"
+                            >
+                              <span className="w-1.5 h-1.5 rounded-full bg-[#38bdf8]" />
+                              <span className="truncate">{source.title}</span>
+                            </a>
+                          );
+                        })}
                       </div>
                     </div>
                   )}

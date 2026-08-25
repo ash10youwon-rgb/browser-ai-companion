@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { GoogleGenAI } from "@google/genai";
+import { checkRateLimit, sanitizeAndValidatePrompt } from "./apiGuard";
 
 export interface SearchGroundingSource {
   title: string;
@@ -191,8 +192,14 @@ async function fetchLiveWebSearch(query: string): Promise<SearchResult | null> {
 export const searchRealtimeWithGoogle = createServerFn({ method: "POST" })
   .validator((d: { query: string; systemPrompt?: string }) => d)
   .handler(async ({ data }): Promise<SearchResult> => {
-    const { query, systemPrompt } = data;
+    const { query: rawQuery, systemPrompt } = data;
+    const queryValidation = sanitizeAndValidatePrompt(rawQuery, 2000);
+    const query = queryValidation.valid
+      ? queryValidation.cleaned
+      : String(rawQuery || "").slice(0, 2000);
+
     const apiKey = process.env.GEMINI_API_KEY;
+    const rateLimit = checkRateLimit();
 
     const currentDate = new Date().toLocaleDateString("en-US", {
       weekday: "long",
@@ -201,7 +208,7 @@ export const searchRealtimeWithGoogle = createServerFn({ method: "POST" })
       day: "numeric",
     });
 
-    if (apiKey) {
+    if (apiKey && rateLimit.allowed) {
       try {
         const ai = new GoogleGenAI({
           apiKey,
@@ -214,10 +221,9 @@ export const searchRealtimeWithGoogle = createServerFn({ method: "POST" })
 
         // Search grounding supported models
         const candidateModels = [
-          "gemini-2.5-flash",
-          "gemini-2.0-flash",
           "gemini-3.7-flash",
           "gemini-flash-latest",
+          "gemini-3.1-flash-lite",
         ];
         let response = null;
 

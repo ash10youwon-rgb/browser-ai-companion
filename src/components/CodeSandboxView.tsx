@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import { runIsolatedJavaScript } from "@/lib/isolatedSandboxRunner";
 import {
   Play,
   RotateCcw,
@@ -931,61 +932,51 @@ export const CodeSandboxView: React.FC<CodeSandboxViewProps> = ({ initialCode })
     ]);
   };
 
-  // Run Benchmark JS in pure browser runtime
-  const handleRunBenchmark = () => {
+  // Run Benchmark JS in isolated Web Worker runtime
+  const handleRunBenchmark = async () => {
     setIsRunning(true);
-    const logs: ConsoleLog[] = [];
-    const startTime = performance.now();
-
-    const customConsole = {
-      log: (...args: unknown[]) => {
-        const text = args
-          .map((a) => (typeof a === "object" ? JSON.stringify(a, null, 2) : String(a)))
-          .join(" ");
-        logs.push({
-          id: `log-${Date.now()}-${Math.random()}`,
-          level: "log",
-          message: text,
-          time: new Date().toLocaleTimeString(),
-        });
+    setConsoleLogs((prev) => [
+      ...prev,
+      {
+        id: `start-${Date.now()}`,
+        level: "log",
+        message: "Starting isolated benchmark runner...",
+        time: new Date().toLocaleTimeString(),
       },
-      error: (...args: unknown[]) => {
-        logs.push({
-          id: `err-${Date.now()}-${Math.random()}`,
-          level: "error",
-          message: args.map(String).join(" "),
-          time: new Date().toLocaleTimeString(),
-        });
-      },
-      warn: (...args: unknown[]) => {
-        logs.push({
-          id: `warn-${Date.now()}-${Math.random()}`,
-          level: "warn",
-          message: args.map(String).join(" "),
-          time: new Date().toLocaleTimeString(),
-        });
-      },
-    };
+    ]);
 
     try {
-      const runFn = new Function("console", "performance", "setTimeout", benchmarkCode);
-      runFn(customConsole, performance, setTimeout);
-      const duration = (performance.now() - startTime).toFixed(2);
+      const result = await runIsolatedJavaScript(benchmarkCode, 5000);
+      const duration = result.durationMs.toFixed(2);
       setExecutionTime(`${duration} ms`);
-      setConsoleLogs((prev) => [
-        ...prev,
-        ...logs,
-        {
+
+      const newLogs: ConsoleLog[] = result.logs.map((l) => ({
+        id: l.id,
+        level: l.level === "info" ? "log" : l.level,
+        message: l.message,
+        time: l.time,
+      }));
+
+      if (result.error) {
+        newLogs.push({
+          id: `err-${Date.now()}`,
+          level: "error",
+          message: `Runtime Error: ${result.error}`,
+          time: new Date().toLocaleTimeString(),
+        });
+      } else {
+        newLogs.push({
           id: `end-${Date.now()}`,
           level: "log",
-          message: `Execution completed in ${duration} ms`,
+          message: `Execution completed in ${duration} ms (isolated sandbox)`,
           time: new Date().toLocaleTimeString(),
-        },
-      ]);
+        });
+      }
+
+      setConsoleLogs((prev) => [...prev, ...newLogs]);
     } catch (err: unknown) {
       setConsoleLogs((prev) => [
         ...prev,
-        ...logs,
         {
           id: `err-${Date.now()}`,
           level: "error",
@@ -1452,7 +1443,7 @@ export const CodeSandboxView: React.FC<CodeSandboxViewProps> = ({ initialCode })
                   <iframe
                     ref={iframeRef}
                     title="BroAI Sandbox Preview"
-                    sandbox="allow-scripts allow-modals allow-same-origin allow-forms"
+                    sandbox="allow-scripts allow-modals allow-forms"
                     className="w-full h-full border-none bg-black"
                   />
                 </div>

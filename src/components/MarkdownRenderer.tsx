@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Copy, Check, Sparkles, Terminal, Brain, ChevronDown } from "lucide-react";
+import { sanitizeUrl, isSafeUrl } from "@/lib/urlSanitizer";
 
 interface MarkdownRendererProps {
   content: string;
@@ -241,17 +242,34 @@ function renderInlineElements(text: string): React.ReactNode[] {
     else if (token.startsWith("[") && token.includes("](") && token.endsWith(")")) {
       const linkMatch = token.match(/\[([^\]]+)\]\(([^)]+)\)/);
       if (linkMatch) {
-        elements.push(
-          <a
-            key={match.index}
-            href={linkMatch[2]}
-            target="_blank"
-            rel="noreferrer"
-            className="text-[#38bdf8] hover:underline font-medium inline-flex items-center gap-0.5"
-          >
-            {linkMatch[1]}
-          </a>,
-        );
+        const rawUrl = linkMatch[2]?.trim() || "";
+        const safe = isSafeUrl(rawUrl);
+        const safeHref = sanitizeUrl(rawUrl);
+
+        if (safe) {
+          elements.push(
+            <a
+              key={match.index}
+              href={safeHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[#38bdf8] hover:underline font-medium inline-flex items-center gap-0.5"
+            >
+              {linkMatch[1]}
+            </a>,
+          );
+        } else {
+          // Render unsafe links as plain text span instead of active javascript: anchor
+          elements.push(
+            <span
+              key={match.index}
+              className="text-slate-400 font-mono text-xs px-1 py-0.5 rounded bg-red-950/30 border border-red-800/30"
+              title="Blocked potentially unsafe link"
+            >
+              {linkMatch[1]}
+            </span>,
+          );
+        }
       } else {
         elements.push(token);
       }

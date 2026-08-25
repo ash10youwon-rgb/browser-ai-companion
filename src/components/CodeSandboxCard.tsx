@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Play, Check } from "lucide-react";
+import { Play, Check, ShieldCheck } from "lucide-react";
+import { runIsolatedJavaScript } from "@/lib/isolatedSandboxRunner";
 
 interface CodeSandboxCardProps {
   initialCode?: string;
@@ -24,30 +25,17 @@ console.log(factorial(5));`,
   const [executionTimeMs, setExecutionTimeMs] = useState<number>(2);
   const [isRunning, setIsRunning] = useState<boolean>(false);
 
-  const handleRun = () => {
+  const handleRun = async () => {
     setIsRunning(true);
-    const start = performance.now();
-    const logs: string[] = [];
-
-    const customConsole = {
-      log: (...args: unknown[]) => {
-        logs.push(
-          args
-            .map((arg) => (typeof arg === "object" ? JSON.stringify(arg, null, 2) : String(arg)))
-            .join(" "),
-        );
-      },
-      error: (...args: unknown[]) => logs.push("[Error] " + args.join(" ")),
-      warn: (...args: unknown[]) => logs.push("[Warn] " + args.join(" ")),
-    };
-
     try {
-      // Safe local sandbox evaluation
-      const runner = new Function("console", code);
-      runner(customConsole);
-      const elapsed = Math.max(1, Math.round(performance.now() - start));
-      setExecutionTimeMs(elapsed);
-      setOutput(logs.length > 0 ? logs.join("\n") : "(Code executed with no output)");
+      const result = await runIsolatedJavaScript(code, 3000);
+      setExecutionTimeMs(result.durationMs);
+      if (result.error) {
+        setOutput(`Error: ${result.error}`);
+      } else {
+        const text = result.logs.map((l) => l.message).join("\n");
+        setOutput(text.length > 0 ? text : "(Code executed with no output)");
+      }
     } catch (err: unknown) {
       const errorObj = err as Error;
       setOutput(`Error: ${errorObj?.message || String(err)}`);
